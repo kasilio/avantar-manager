@@ -258,6 +258,14 @@ class MockQueryBuilder implements PromiseLike<MockResult> {
     this.filters.push((row) => row[column] === value);
     return this;
   }
+  not(column: string, operator: string, value: unknown) {
+    if (operator === "is") {
+      this.filters.push((row) => row[column] !== value);
+    } else if (operator === "eq") {
+      this.filters.push((row) => row[column] !== value);
+    }
+    return this;
+  }
   in(column: string, values: unknown[]) {
     this.filters.push((row) => values.includes(row[column]));
     return this;

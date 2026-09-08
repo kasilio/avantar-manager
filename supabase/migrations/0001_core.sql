@@ -321,7 +321,7 @@ language plpgsql
 as $$
 begin
   if new.coluna_id = 'perdido' and (old.coluna_id is distinct from 'perdido') then
-    new.next_contact := current_date + interval '2 months';
+    new.next_contact := (current_date + interval '2 months')::date;
   end if;
   return new;
 end;
