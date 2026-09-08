@@ -1,0 +1,233 @@
+// Tipos manuais das tabelas do Supabase — schema em
+// supabase/migrations/0001_core.sql.
+//
+// Se o projeto crescer, considere gerar isso automaticamente com:
+//   npx supabase gen types typescript --project-id <id> > src/types/database.ts
+//
+// Nota: as tabelas usam `type` (não `interface`) de propósito — o TypeScript só
+// trata um `type` de objeto como tendo assinatura de índice implícita em
+// checagens `extends` (o que o generic Database do supabase-js exige);
+// `interface` não recebe esse tratamento e quebra a inferência dos tipos.
+
+export type Papel = "admin" | "vendedor";
+export type StatusCliente = "prospect" | "ativo" | "inativo";
+export type TipoDoc = "cnpj" | "cpf";
+export type StatusProducao = "ativa" | "vencida" | "cancelada";
+export type StatusRepasse = "aguardando_nf" | "aguardando_pagamento" | "pago";
+export type TipoDespesa = "fixa" | "variavel";
+
+export type Usuario = {
+  id: string;
+  nome: string;
+  email: string;
+  papel: Papel;
+  cpf: string | null;
+  susep: string | null;
+  whatsapp: string | null;
+  pix: string | null;
+  obs: string | null;
+  ativo: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TipoProduto = {
+  id: string;
+  nome: string;
+  descricao: string | null;
+  bloqueada: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Seguradora = {
+  id: string;
+  nome: string;
+  susep: string | null;
+  cnpj: string | null;
+  telefone: string | null;
+  site: string | null;
+  obs: string | null;
+  bloqueada: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Cliente = {
+  id: string;
+  tipo_doc: TipoDoc;
+  nome: string;
+  fantasia: string | null;
+  cnpj: string | null;
+  cpf: string | null;
+  nascimento: string | null;
+  situacao: string | null;
+  cep: string | null;
+  logradouro: string | null;
+  numero: string | null;
+  bairro: string | null;
+  cidade: string | null;
+  cnae: string | null;
+  porte: string | null;
+  tel: string | null;
+  email_com: string | null;
+  status: StatusCliente;
+  obs: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ClienteContato = {
+  id: string;
+  cliente_id: string;
+  nome: string;
+  cargo: string | null;
+  whatsapp: string | null;
+  email: string | null;
+  aniversario: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Producao = {
+  id: string;
+  cliente_id: string;
+  tipo_produto_id: string | null;
+  seguradora_id: string | null;
+  num_apolice: string | null;
+  num_proposta: string | null;
+  premio_mensal: number | null;
+  premio_total: number | null;
+  comissao_bruta_pct: number | null;
+  comissao_avantar_pct: number | null;
+  comissao_unidade_pct: number | null;
+  parcelas: string | null;
+  vigencia_inicio: string | null;
+  vigencia_fim: string | null;
+  data_renovacao: string | null;
+  status_manual: StatusProducao;
+  vendedor_id: string | null;
+  comissao_pct: number | null;
+  obs: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Followup = {
+  id: string;
+  producao_id: string;
+  dias: number;
+  motivo: string;
+  due_date: string;
+  concluido_em: string | null;
+  created_at: string;
+};
+
+export type Repasse = {
+  id: string;
+  producao_id: string;
+  parcela: string | null;
+  periodo: string;
+  comissao_bruta: number | null;
+  apolice_pct: number | null;
+  repasse_pct: number | null;
+  status: StatusRepasse;
+  nf_info: string | null;
+  data_pagamento: string | null;
+  valor_pago: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CrmColuna = {
+  id: string;
+  label: string;
+  icon: string | null;
+  color: string | null;
+  sistema: boolean;
+  bloqueada: boolean;
+  nota: string | null;
+  ordem: number;
+};
+
+export type Prospeccao = {
+  id: string;
+  empresa: string;
+  cliente_id: string | null;
+  tipo_produto_id: string | null;
+  coluna_id: string;
+  next_contact: string | null;
+  obs: string | null;
+  vendedor_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Tarefa = {
+  id: string;
+  titulo: string;
+  data: string;
+  descricao: string | null;
+  concluida: boolean;
+  vendedor_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Despesa = {
+  id: string;
+  tipo: TipoDespesa;
+  descricao: string;
+  valor: number;
+  categoria: string | null;
+  dia_vencimento: number | null;
+  data: string | null;
+  ativa: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type DespesaPagamento = {
+  id: string;
+  despesa_id: string;
+  periodo: string;
+  data_pagamento: string;
+  created_at: string;
+};
+
+export type Settings = {
+  id: true;
+  aliquota_simples: number;
+  meta_mensal: number;
+  updated_at: string;
+};
+
+type TableDef<Row, Insert, Update = Partial<Insert>> = {
+  Row: Row;
+  Insert: Insert;
+  Update: Update;
+  Relationships: [];
+};
+
+export type Database = {
+  public: {
+    Tables: {
+      usuarios: TableDef<Usuario, Omit<Usuario, "created_at" | "updated_at" | "ativo"> & Partial<Pick<Usuario, "ativo">>>;
+      tipos_produto: TableDef<TipoProduto, Omit<TipoProduto, "id" | "created_at" | "updated_at" | "bloqueada"> & Partial<Pick<TipoProduto, "bloqueada">>>;
+      seguradoras: TableDef<Seguradora, Omit<Seguradora, "id" | "created_at" | "updated_at" | "bloqueada"> & Partial<Pick<Seguradora, "bloqueada">>>;
+      clientes: TableDef<Cliente, Omit<Cliente, "id" | "created_at" | "updated_at" | "status"> & Partial<Pick<Cliente, "status">>>;
+      clientes_contatos: TableDef<ClienteContato, Omit<ClienteContato, "id" | "created_at" | "updated_at">>;
+      producoes: TableDef<Producao, Omit<Producao, "id" | "created_at" | "updated_at" | "comissao_avantar_pct" | "comissao_unidade_pct" | "status_manual"> & Partial<Pick<Producao, "status_manual">>>;
+      followups: TableDef<Followup, Omit<Followup, "id" | "created_at">>;
+      repasses: TableDef<Repasse, Omit<Repasse, "id" | "created_at" | "updated_at" | "status"> & Partial<Pick<Repasse, "status">>>;
+      crm_colunas: TableDef<CrmColuna, Omit<CrmColuna, "sistema" | "bloqueada" | "ordem"> & Partial<Pick<CrmColuna, "sistema" | "bloqueada" | "ordem">>>;
+      prospeccoes: TableDef<Prospeccao, Omit<Prospeccao, "id" | "created_at" | "updated_at">>;
+      tarefas: TableDef<Tarefa, Omit<Tarefa, "id" | "created_at" | "updated_at" | "concluida"> & Partial<Pick<Tarefa, "concluida">>>;
+      despesas: TableDef<Despesa, Omit<Despesa, "id" | "created_at" | "updated_at" | "ativa"> & Partial<Pick<Despesa, "ativa">>>;
+      despesas_pagamentos: TableDef<DespesaPagamento, Omit<DespesaPagamento, "id" | "created_at">>;
+      settings: TableDef<Settings, Partial<Omit<Settings, "updated_at">>>;
+    };
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
+  };
+};
