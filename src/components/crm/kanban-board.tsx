@@ -41,14 +41,14 @@ export function KanbanBoard({
   }
 
   return (
-    <div className="flex gap-4 overflow-x-auto pb-4">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
       {colunas.map((coluna) => {
         const cards = prospeccoes.filter((p) => p.coluna_id === coluna.id);
         return (
           <div
             key={coluna.id}
             className={cn(
-              "flex w-72 shrink-0 flex-col gap-2 rounded-lg border border-border bg-card p-2",
+              "flex min-w-0 flex-col gap-2 rounded-lg border border-border bg-card p-2",
               dragOverColuna === coluna.id && "ring-2 ring-primary",
             )}
             onDragOver={(e) => {
