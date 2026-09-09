@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Avantar Manager",
   description: "Gestão de carteira, produções e comissões da Avantar Corretora",
-  icons: { icon: "/avantar-logo.png" },
+  icons: { icon: "/favicon-avantar.png" },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

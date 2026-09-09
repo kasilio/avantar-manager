@@ -15,15 +15,19 @@ export function Sidebar() {
 
   return (
     <aside className="hidden w-56 shrink-0 flex-col bg-sidebar text-sidebar-foreground md:flex">
-      <div className="flex h-16 items-center justify-center border-b border-sidebar-border bg-sidebar/60 px-4">
+      <div className="flex h-16 items-center gap-2.5 border-b border-sidebar-border bg-sidebar/60 px-4">
         <Image
-          src="/avantar-logo.png"
-          alt="Avantar"
-          width={132}
-          height={40}
-          className="h-9 w-auto object-contain"
+          src="/avantar-mark.png"
+          alt=""
+          width={28}
+          height={24}
+          className="h-6 w-auto shrink-0 object-contain"
           priority
         />
+        <div className="leading-tight">
+          <div className="text-base font-bold tracking-tight text-white">Avantar</div>
+          <div className="text-[10px] font-medium uppercase tracking-wider text-white/55">Manager</div>
+        </div>
       </div>
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-2">
         {items.map((item) => {
