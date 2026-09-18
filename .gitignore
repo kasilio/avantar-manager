@@ -37,6 +37,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# supabase cli local state
+supabase/.temp
+
 # documentos reais de clientes soltos na raiz do projeto (apólices, notas
 # fiscais, repasses) — nunca devem ir pro histórico do Git
 /APÓLICES/
