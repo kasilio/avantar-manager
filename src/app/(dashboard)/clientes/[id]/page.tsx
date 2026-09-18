@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ClienteForm } from "@/components/clientes/cliente-form";
 import { createClient } from "@/lib/supabase/server";
 import { fmtMoney } from "@/lib/format";
@@ -34,6 +35,27 @@ export default async function ClienteDetalhePage({
   const producoes = (producoesRaw ?? []) as unknown as ProducaoComRelacoes[];
 
   if (!cliente) notFound();
+
+  const producaoPorId = new Map(producoes.map((p) => [p.id, p]));
+  const { data: repassesRaw } = producoes.length > 0
+    ? await supabase
+        .from("repasses")
+        .select("*, repasses_lotes(status, data_pagamento)")
+        .in("producao_id", producoes.map((p) => p.id))
+        .order("periodo", { ascending: false })
+    : { data: [] as never[] };
+  const repasses = (repassesRaw ?? []) as unknown as Array<{
+    id: string;
+    producao_id: string;
+    parcela: string | null;
+    periodo: string;
+    comissao_bruta: number | null;
+    repasses_lotes: { status: string; data_pagamento: string | null } | null;
+  }>;
+  const totalRecebido = repasses.reduce(
+    (sum, r) => sum + (r.repasses_lotes?.status === "pago" ? Number(r.comissao_bruta ?? 0) : 0),
+    0,
+  );
 
   const updateClienteWithId = updateCliente.bind(null, id);
   const deleteClienteWithId = deleteCliente.bind(null, id);
@@ -71,11 +93,64 @@ export default async function ClienteDetalhePage({
                   <div className="text-xs text-muted-foreground">Apólice {p.num_apolice || "—"}</div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-muted-foreground">{fmtMoney(p.premio_mensal)}/mês</span>
+                  <span className="text-muted-foreground">
+                    {p.premio_mensal != null ? `${fmtMoney(p.premio_mensal)}/mês` : "Prêmio não informado"}
+                  </span>
                   <StatusBadge status={p.status_manual} />
                 </div>
               </Link>
           ))}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
+          <CardTitle>Histórico de repasses</CardTitle>
+          <span className="text-sm font-medium text-success">Total recebido: {fmtMoney(totalRecebido)}</span>
+        </CardHeader>
+        <CardContent className="p-0">
+          {repasses.length === 0 ? (
+            <p className="p-4 text-sm text-muted-foreground">Nenhum repasse registrado ainda.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Período</TableHead>
+                    <TableHead>Produção</TableHead>
+                    <TableHead className="hidden md:table-cell">Parcela</TableHead>
+                    <TableHead>Valor</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {repasses.map((r) => {
+                    const producao = producaoPorId.get(r.producao_id);
+                    return (
+                      <TableRow key={r.id}>
+                        <TableCell className="text-muted-foreground">{r.periodo}</TableCell>
+                        <TableCell>
+                          <Link href={`/producoes/${r.producao_id}`} className="font-medium hover:text-primary">
+                            {producao?.tipos_produto?.nome ?? "Produção"}
+                          </Link>
+                          <div className="text-xs text-muted-foreground">Apólice {producao?.num_apolice || "—"}</div>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell text-muted-foreground">{r.parcela || "—"}</TableCell>
+                        <TableCell>{fmtMoney(r.comissao_bruta)}</TableCell>
+                        <TableCell>
+                          {r.repasses_lotes?.status === "pago" ? (
+                            <StatusBadge status="pago" />
+                          ) : (
+                            <StatusBadge status={r.repasses_lotes?.status ?? "aguardando_nf"} />
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
 

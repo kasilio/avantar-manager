@@ -14,7 +14,7 @@ export type StatusCliente = "prospect" | "ativo" | "inativo";
 export type TipoDoc = "cnpj" | "cpf";
 export type StatusProducao = "ativa" | "vencida" | "cancelada";
 export type StatusRepasse = "aguardando_nf" | "aguardando_pagamento" | "pago";
-export type TipoDespesa = "fixa" | "variavel";
+export type TipoDespesa = "fixa" | "variavel" | "parcelada";
 
 export type Usuario = {
   id: string;
@@ -49,6 +49,19 @@ export type Seguradora = {
   site: string | null;
   obs: string | null;
   bloqueada: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TipoContatoSeguradora = "ponto_focal" | "financeiro" | "averbacao";
+
+export type SeguradoraContato = {
+  id: string;
+  seguradora_id: string;
+  tipo: TipoContatoSeguradora;
+  nome: string;
+  telefone: string | null;
+  email: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -125,14 +138,28 @@ export type Followup = {
 
 export type Repasse = {
   id: string;
+  lote_id: string;
   producao_id: string;
   parcela: string | null;
   periodo: string;
   comissao_bruta: number | null;
   apolice_pct: number | null;
   repasse_pct: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type RepasseLote = {
+  id: string;
+  arquivo: string | null;
+  periodo_inicio: string;
+  periodo_fim: string;
+  comissao_bruta_total: number | null;
   status: StatusRepasse;
   nf_info: string | null;
+  nf_competencia: string | null;
+  nf_arquivo_nome: string | null;
+  nf_arquivo_base64: string | null;
   data_pagamento: string | null;
   valor_pago: number | null;
   created_at: string;
@@ -170,6 +197,7 @@ export type Tarefa = {
   descricao: string | null;
   concluida: boolean;
   vendedor_id: string | null;
+  origem_despesa_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -182,6 +210,8 @@ export type Despesa = {
   categoria: string | null;
   dia_vencimento: number | null;
   data: string | null;
+  parcelas_total: number | null;
+  parcela_inicio: string | null;
   ativa: boolean;
   created_at: string;
   updated_at: string;
@@ -195,10 +225,52 @@ export type DespesaPagamento = {
   created_at: string;
 };
 
+/** Valor de uma despesa fixa/parcelada, registrado por período — quando o
+ * usuário altera o valor, um novo registro entra a partir do mês vigente,
+ * sem reescrever o histórico de meses já fechados. */
+export type DespesaHistoricoValor = {
+  id: string;
+  despesa_id: string;
+  periodo: string;
+  valor: number;
+  created_at: string;
+};
+
 export type Settings = {
   id: true;
   aliquota_simples: number;
   meta_mensal: number;
+  updated_at: string;
+};
+
+export type MetaMensal = {
+  periodo: string;
+  valor: number;
+  gerado_automaticamente: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProspeccaoHistorico = {
+  id: string;
+  prospeccao_id: string;
+  coluna_anterior: string;
+  coluna_nova: string;
+  nota: string;
+  usuario_id: string | null;
+  created_at: string;
+};
+
+export type FechamentoMensal = {
+  periodo: string;
+  das_numero_documento: string | null;
+  das_vencimento: string | null;
+  das_valor: number | null;
+  das_arquivo_nome: string | null;
+  das_arquivo_base64: string | null;
+  fechado_em: string | null;
+  fechado_por: string | null;
+  created_at: string;
   updated_at: string;
 };
 
@@ -215,17 +287,23 @@ export type Database = {
       usuarios: TableDef<Usuario, Omit<Usuario, "created_at" | "updated_at" | "ativo"> & Partial<Pick<Usuario, "ativo">>>;
       tipos_produto: TableDef<TipoProduto, Omit<TipoProduto, "id" | "created_at" | "updated_at" | "bloqueada"> & Partial<Pick<TipoProduto, "bloqueada">>>;
       seguradoras: TableDef<Seguradora, Omit<Seguradora, "id" | "created_at" | "updated_at" | "bloqueada"> & Partial<Pick<Seguradora, "bloqueada">>>;
+      seguradoras_contatos: TableDef<SeguradoraContato, Omit<SeguradoraContato, "id" | "created_at" | "updated_at">>;
       clientes: TableDef<Cliente, Omit<Cliente, "id" | "created_at" | "updated_at" | "status"> & Partial<Pick<Cliente, "status">>>;
       clientes_contatos: TableDef<ClienteContato, Omit<ClienteContato, "id" | "created_at" | "updated_at">>;
       producoes: TableDef<Producao, Omit<Producao, "id" | "created_at" | "updated_at" | "comissao_avantar_pct" | "comissao_unidade_pct" | "status_manual"> & Partial<Pick<Producao, "status_manual">>>;
       followups: TableDef<Followup, Omit<Followup, "id" | "created_at">>;
-      repasses: TableDef<Repasse, Omit<Repasse, "id" | "created_at" | "updated_at" | "status"> & Partial<Pick<Repasse, "status">>>;
+      repasses: TableDef<Repasse, Omit<Repasse, "id" | "created_at" | "updated_at">>;
+      repasses_lotes: TableDef<RepasseLote, Omit<RepasseLote, "id" | "created_at" | "updated_at" | "status"> & Partial<Pick<RepasseLote, "status">>>;
       crm_colunas: TableDef<CrmColuna, Omit<CrmColuna, "sistema" | "bloqueada" | "ordem"> & Partial<Pick<CrmColuna, "sistema" | "bloqueada" | "ordem">>>;
       prospeccoes: TableDef<Prospeccao, Omit<Prospeccao, "id" | "created_at" | "updated_at">>;
-      tarefas: TableDef<Tarefa, Omit<Tarefa, "id" | "created_at" | "updated_at" | "concluida"> & Partial<Pick<Tarefa, "concluida">>>;
-      despesas: TableDef<Despesa, Omit<Despesa, "id" | "created_at" | "updated_at" | "ativa"> & Partial<Pick<Despesa, "ativa">>>;
+      prospeccoes_historico: TableDef<ProspeccaoHistorico, Omit<ProspeccaoHistorico, "id" | "created_at">>;
+      tarefas: TableDef<Tarefa, Omit<Tarefa, "id" | "created_at" | "updated_at" | "concluida" | "origem_despesa_id"> & Partial<Pick<Tarefa, "concluida" | "origem_despesa_id">>>;
+      despesas: TableDef<Despesa, Omit<Despesa, "id" | "created_at" | "updated_at" | "ativa" | "parcelas_total" | "parcela_inicio"> & Partial<Pick<Despesa, "ativa" | "parcelas_total" | "parcela_inicio">>>;
       despesas_pagamentos: TableDef<DespesaPagamento, Omit<DespesaPagamento, "id" | "created_at">>;
+      despesas_historico_valores: TableDef<DespesaHistoricoValor, Omit<DespesaHistoricoValor, "id" | "created_at">>;
       settings: TableDef<Settings, Partial<Omit<Settings, "updated_at">>>;
+      metas_mensais: TableDef<MetaMensal, Omit<MetaMensal, "created_at" | "updated_at" | "gerado_automaticamente"> & Partial<Pick<MetaMensal, "gerado_automaticamente">>>;
+      fechamentos_mensais: TableDef<FechamentoMensal, Omit<FechamentoMensal, "created_at" | "updated_at">>;
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

@@ -12,7 +12,10 @@ export default async function SeguradoraDetalhePage({
 }) {
   const { id } = await params;
   const supabase = await createClient();
-  const { data: seguradora } = await supabase.from("seguradoras").select("*").eq("id", id).single();
+  const [{ data: seguradora }, { data: contatos }] = await Promise.all([
+    supabase.from("seguradoras").select("*").eq("id", id).single(),
+    supabase.from("seguradoras_contatos").select("*").eq("seguradora_id", id),
+  ]);
 
   if (!seguradora) notFound();
 
@@ -36,7 +39,7 @@ export default async function SeguradoraDetalhePage({
           <CardTitle>Dados da seguradora</CardTitle>
         </CardHeader>
         <CardContent>
-          <SeguradoraForm seguradora={seguradora} action={updateWithId} />
+          <SeguradoraForm seguradora={seguradora} contatosIniciais={contatos ?? []} action={updateWithId} />
         </CardContent>
       </Card>
     </div>

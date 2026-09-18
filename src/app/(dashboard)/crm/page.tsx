@@ -3,7 +3,7 @@ import { KanbanBoard } from "@/components/crm/kanban-board";
 import { FollowupList } from "@/components/crm/followup-list";
 import { createClient } from "@/lib/supabase/server";
 import { requireCurrentUsuario } from "@/lib/auth/get-current-usuario";
-import type { Cliente, CrmColuna, Followup, Prospeccao, Producao, TipoProduto, Usuario } from "@/types/database";
+import type { Cliente, CrmColuna, Followup, Prospeccao, ProspeccaoHistorico, Producao, TipoProduto, Usuario } from "@/types/database";
 import { avancarPerdidosVencidos } from "./actions";
 
 export default async function CrmPage() {
@@ -18,23 +18,26 @@ export default async function CrmPage() {
     { data: tiposProduto },
     { data: vendedores },
     { data: followupsRaw },
+    { data: historicoRaw },
   ] = await Promise.all([
     supabase.from("crm_colunas").select("*").order("ordem"),
     supabase.from("prospeccoes").select("*, clientes(nome)"),
     supabase.from("clientes").select("*").order("nome"),
     supabase.from("tipos_produto").select("*").order("nome"),
-    supabase.from("usuarios").select("*").eq("papel", "vendedor").eq("ativo", true).order("nome"),
+    supabase.from("usuarios").select("*").eq("ativo", true).order("nome"),
     supabase
       .from("followups")
       .select("*, producoes(id, num_apolice, clientes(nome))")
       .is("concluido_em", null)
       .order("due_date"),
+    supabase.from("prospeccoes_historico").select("*").order("created_at", { ascending: false }),
   ]);
 
   const prospeccoes = (prospeccoesRaw ?? []) as unknown as (Prospeccao & { clientes: Pick<Cliente, "nome"> | null })[];
   const followups = (followupsRaw ?? []) as unknown as (Followup & {
     producoes: (Pick<Producao, "id" | "num_apolice"> & { clientes: Pick<Cliente, "nome"> | null }) | null;
   })[];
+  const historico = (historicoRaw ?? []) as ProspeccaoHistorico[];
 
   return (
     <div className="flex flex-col gap-6">
@@ -51,6 +54,7 @@ export default async function CrmPage() {
             clientes={clientes ?? []}
             tiposProduto={(tiposProduto ?? []) as TipoProduto[]}
             vendedores={(vendedores ?? []) as Usuario[]}
+            historico={historico}
             isAdmin={usuario.papel === "admin"}
           />
         </TabsContent>

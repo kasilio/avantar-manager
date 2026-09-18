@@ -1,7 +1,11 @@
 import { z } from "zod";
 
 export const contatoSchema = z.object({
-  nome: z.string().min(1),
+  // Sem min(1) de propósito: o form já abre um contato em branco por padrão
+  // pra PJ, e a action descarta os que ficarem sem nome (ver
+  // `.filter((c) => c.nome)` em src/app/(dashboard)/clientes/actions.ts) —
+  // exigir nome aqui bloquearia o save inteiro se esse contato ficar vazio.
+  nome: z.string().optional().default(""),
   cargo: z.string().optional().default(""),
   whatsapp: z.string().optional().default(""),
   email: z.string().optional().default(""),

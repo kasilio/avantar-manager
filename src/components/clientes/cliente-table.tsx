@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -10,9 +11,49 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { fmtDateCurta, fmtMoney } from "@/lib/format";
 import type { Cliente } from "@/types/database";
 
-export function ClienteTable({ clientes }: { clientes: Cliente[] }) {
+export type ClienteResumo = Cliente & {
+  faturamento: number;
+  vigenciaInicio: string | null;
+  vigenciaFim: string | null;
+};
+
+function SortHeader({
+  label,
+  col,
+  sort,
+  dir,
+}: {
+  label: string;
+  col: "nome" | "faturamento";
+  sort: "nome" | "faturamento";
+  dir: "asc" | "desc";
+}) {
+  const ativo = sort === col;
+  const proximaDir = ativo && dir === "asc" ? "desc" : "asc";
+  const Icone = ativo ? (dir === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
+  return (
+    <Link
+      href={`/clientes?sort=${col}&dir=${proximaDir}`}
+      className={`inline-flex items-center gap-1 hover:text-primary ${ativo ? "text-primary" : ""}`}
+    >
+      {label}
+      <Icone className="size-3.5" />
+    </Link>
+  );
+}
+
+export function ClienteTable({
+  clientes,
+  sort,
+  dir,
+}: {
+  clientes: ClienteResumo[];
+  sort: "nome" | "faturamento";
+  dir: "asc" | "desc";
+}) {
   if (clientes.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
@@ -26,10 +67,12 @@ export function ClienteTable({ clientes }: { clientes: Cliente[] }) {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Nome</TableHead>
-            <TableHead className="hidden md:table-cell">Documento</TableHead>
-            <TableHead className="hidden md:table-cell">Cidade</TableHead>
+            <TableHead><SortHeader label="Nome" col="nome" sort={sort} dir={dir} /></TableHead>
+            <TableHead className="hidden md:table-cell">CPF/CNPJ</TableHead>
+            <TableHead className="hidden md:table-cell">Cidade/UF</TableHead>
+            <TableHead><SortHeader label="Faturamento" col="faturamento" sort={sort} dir={dir} /></TableHead>
             <TableHead>Status</TableHead>
+            <TableHead className="hidden md:table-cell">Vigência</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -44,9 +87,15 @@ export function ClienteTable({ clientes }: { clientes: Cliente[] }) {
               <TableCell className="hidden md:table-cell text-muted-foreground">
                 {c.tipo_doc === "cnpj" ? c.cnpj : c.cpf}
               </TableCell>
-              <TableCell className="hidden md:table-cell text-muted-foreground">{c.cidade}</TableCell>
+              <TableCell className="hidden md:table-cell text-muted-foreground">{c.cidade || "—"}</TableCell>
+              <TableCell className="font-medium">{fmtMoney(c.faturamento)}</TableCell>
               <TableCell>
                 <StatusBadge status={c.status} />
+              </TableCell>
+              <TableCell className="hidden md:table-cell text-muted-foreground">
+                {c.vigenciaInicio || c.vigenciaFim
+                  ? `${fmtDateCurta(c.vigenciaInicio)} a ${fmtDateCurta(c.vigenciaFim)}`
+                  : "—"}
               </TableCell>
             </TableRow>
           ))}

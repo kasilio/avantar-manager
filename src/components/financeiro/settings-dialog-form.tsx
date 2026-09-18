@@ -26,11 +26,13 @@ export function SettingsDialogForm({ settings }: { settings: Settings }) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger>
-        <Button type="button" variant="outline" size="sm">
-          <Settings2 className="size-4" /> Configurações
-        </Button>
-      </DialogTrigger>
+      <DialogTrigger
+        render={
+          <Button type="button" variant="outline" size="sm">
+            <Settings2 className="size-4" /> Configurações
+          </Button>
+        }
+      />
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Configurações financeiras</DialogTitle>
@@ -44,17 +46,6 @@ export function SettingsDialogForm({ settings }: { settings: Settings }) {
               type="number"
               step="0.01"
               defaultValue={settings.aliquota_simples}
-              required
-            />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="meta_mensal">Meta mensal (R$)</Label>
-            <Input
-              id="meta_mensal"
-              name="meta_mensal"
-              type="number"
-              step="0.01"
-              defaultValue={settings.meta_mensal}
               required
             />
           </div>

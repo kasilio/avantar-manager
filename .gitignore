@@ -37,6 +37,13 @@ yarn-error.log*
 # vercel
 .vercel
 
+# documentos reais de clientes soltos na raiz do projeto (apólices, notas
+# fiscais, repasses) — nunca devem ir pro histórico do Git
+/APÓLICES/
+/NFS/
+/Repasses/
+/HISTORICO DE REPASSES.pdf
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

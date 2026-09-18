@@ -10,13 +10,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { StatusBadge } from "@/components/shared/status-badge";
-import { fmtMoney } from "@/lib/format";
+import { fmtDateCurta, fmtMoney } from "@/lib/format";
 import type { Cliente, Producao, Seguradora, TipoProduto } from "@/types/database";
 
 export type ProducaoRow = Producao & {
   clientes: Pick<Cliente, "nome"> | null;
   tipos_produto: Pick<TipoProduto, "nome"> | null;
   seguradoras: Pick<Seguradora, "nome"> | null;
+  faturamentoGerado?: number;
 };
 
 export function ProducaoTable({ producoes }: { producoes: ProducaoRow[] }) {
@@ -36,7 +37,8 @@ export function ProducaoTable({ producoes }: { producoes: ProducaoRow[] }) {
             <TableHead>Cliente</TableHead>
             <TableHead className="hidden md:table-cell">Produto</TableHead>
             <TableHead className="hidden md:table-cell">Seguradora</TableHead>
-            <TableHead>Prêmio/mês</TableHead>
+            <TableHead>Faturamento gerado</TableHead>
+            <TableHead className="hidden md:table-cell">Fim da vigência</TableHead>
             <TableHead>Status</TableHead>
           </TableRow>
         </TableHeader>
@@ -51,7 +53,10 @@ export function ProducaoTable({ producoes }: { producoes: ProducaoRow[] }) {
               </TableCell>
               <TableCell className="hidden md:table-cell text-muted-foreground">{p.tipos_produto?.nome ?? "—"}</TableCell>
               <TableCell className="hidden md:table-cell text-muted-foreground">{p.seguradoras?.nome ?? "—"}</TableCell>
-              <TableCell>{fmtMoney(p.premio_mensal)}</TableCell>
+              <TableCell className="font-medium">{fmtMoney(p.faturamentoGerado)}</TableCell>
+              <TableCell className="hidden md:table-cell text-muted-foreground">
+                {p.vigencia_fim ? fmtDateCurta(p.vigencia_fim) : "—"}
+              </TableCell>
               <TableCell>
                 <StatusBadge status={p.status_manual} />
               </TableCell>

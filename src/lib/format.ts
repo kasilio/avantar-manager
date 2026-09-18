@@ -15,6 +15,40 @@ export function fmtDate(value: string | null | undefined): string {
   return `${d}/${m}/${y}`;
 }
 
+export function shiftPeriodo(periodo: string, delta: number): string {
+  const [y, m] = periodo.split("-").map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+export function mesLabel(periodo: string): string {
+  const [y, m] = periodo.split("-").map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+}
+
+export function diasNoMes(periodo: string): number {
+  const [y, m] = periodo.split("-").map(Number);
+  return new Date(y, m, 0).getDate();
+}
+
+export function diaDoMes(dataIso: string): number {
+  return Number(dataIso.slice(8, 10));
+}
+
+/** "DD/MM/YYYY" -> "YYYY-MM-DD". */
+export function brDateToIso(d: string): string | null {
+  const m = d.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return null;
+  return `${m[3]}-${m[2]}-${m[1]}`;
+}
+
+export function fmtDateCurta(value: string | null | undefined): string {
+  if (!value) return "—";
+  const [y, m, d] = value.slice(0, 10).split("-");
+  if (!y || !m || !d) return "—";
+  return `${d}/${m}/${y.slice(2)}`;
+}
+
 export function fmtPct(value: number | null | undefined): string {
   if (value == null) return "—";
   return `${Number(value).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`;

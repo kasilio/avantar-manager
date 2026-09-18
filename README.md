@@ -35,9 +35,10 @@ sem precisar configurar nada. `npm run lint`, `npx tsc --noEmit` e
 2. Copie `.env.example` para `.env.local` e preencha
    `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` e
    `SUPABASE_SERVICE_ROLE_KEY` (Project Settings > API).
-3. No SQL Editor do Supabase Studio, rode `supabase/migrations/0001_core.sql`
-   (cria todas as tabelas, RLS e os cadastros padrão — tipos de produto,
-   seguradoras e colunas do kanban).
+3. No SQL Editor do Supabase Studio, rode os arquivos de
+   `supabase/migrations/` em ordem (`0001_core.sql` cria todas as tabelas,
+   RLS e os cadastros padrão — tipos de produto, seguradoras e colunas do
+   kanban; migrations seguintes ajustam esses dados).
 4. Em Authentication > Users, crie o primeiro usuário (você) e copie o UUID.
 5. No SQL Editor, insira o registro correspondente em `usuarios` com
    `papel = 'admin'`:
@@ -53,7 +54,8 @@ sem precisar configurar nada. `npm run lint`, `npx tsc --noEmit` e
 
 - [ ] Login funciona com o usuário admin
 - [ ] Cadastrar cliente, produção (ver os 6 follow-ups gerados) e repasse
-- [ ] Kanban do CRM: arrastar card entre colunas
+- [ ] Kanban do CRM: arrastar card entre colunas (pede uma observação
+      obrigatória a cada movimentação, que fica no histórico da negociação)
 - [ ] Criar um vendedor em Usuários, logar com ele e confirmar que só vê a
       própria carteira (teste manual de RLS)
 - [ ] Financeiro/DRE e Dashboard refletindo os dados cadastrados

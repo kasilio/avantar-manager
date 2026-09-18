@@ -23,6 +23,13 @@ export function maskCEP(value: string): string {
   return d.replace(/(\d{5})(\d)/, "$1-$2");
 }
 
+/** Dia do mês (1-31), só dígitos, no máximo 2 e nunca passa de 31. */
+export function maskDiaVencimento(value: string): string {
+  const d = value.replace(/\D/g, "").slice(0, 2);
+  if (d === "") return d;
+  return parseInt(d, 10) > 31 ? "31" : d;
+}
+
 export function maskPhone(value: string): string {
   const d = value.replace(/\D/g, "").slice(0, 11);
   if (d.length <= 10) {

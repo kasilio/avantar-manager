@@ -50,7 +50,11 @@ export function UsuarioForm({
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-2">
           <Label htmlFor="papel">Papel</Label>
-          <Select name="papel" defaultValue={usuario?.papel ?? "vendedor"}>
+          <Select
+            name="papel"
+            defaultValue={usuario?.papel ?? "vendedor"}
+            items={{ vendedor: "Vendedor", admin: "Administrador" }}
+          >
             <SelectTrigger id="papel">
               <SelectValue />
             </SelectTrigger>

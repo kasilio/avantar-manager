@@ -14,25 +14,32 @@ function parseClienteFormData(formData: FormData) {
     contatos = [];
   }
 
+  // Os campos abaixo são opcionais no schema (`.optional()`, que só aceita
+  // `undefined`, não `null`) — mas boa parte só existe no DOM condicionalmente
+  // (ex. `cpf`/`nascimento` só renderizam no modo pessoa física), então
+  // `formData.get()` retorna `null` pra eles sem estarem "errados". Normaliza
+  // `null` -> `undefined` aqui em vez de deixar passar pro zod.
+  const str = (key: string) => formData.get(key) ?? undefined;
+
   const parsed = clienteSchema.safeParse({
     nome: formData.get("nome"),
     tipo_doc: formData.get("tipo_doc"),
-    cnpj: formData.get("cnpj"),
-    cpf: formData.get("cpf"),
-    nascimento: formData.get("nascimento"),
-    fantasia: formData.get("fantasia"),
-    situacao: formData.get("situacao"),
-    cep: formData.get("cep"),
-    logradouro: formData.get("logradouro"),
-    numero: formData.get("numero"),
-    bairro: formData.get("bairro"),
-    cidade: formData.get("cidade"),
-    cnae: formData.get("cnae"),
-    porte: formData.get("porte"),
-    tel: formData.get("tel"),
-    email_com: formData.get("email_com"),
+    cnpj: str("cnpj"),
+    cpf: str("cpf"),
+    nascimento: str("nascimento"),
+    fantasia: str("fantasia"),
+    situacao: str("situacao"),
+    cep: str("cep"),
+    logradouro: str("logradouro"),
+    numero: str("numero"),
+    bairro: str("bairro"),
+    cidade: str("cidade"),
+    cnae: str("cnae"),
+    porte: str("porte"),
+    tel: str("tel"),
+    email_com: str("email_com"),
     status: formData.get("status") || "prospect",
-    obs: formData.get("obs"),
+    obs: str("obs"),
     contatos,
   });
 

@@ -7,27 +7,43 @@ import { requireAdmin } from "@/lib/auth/get-current-usuario";
 import { seguradoraSchema } from "@/lib/validations/seguradora";
 
 function parseSeguradoraFormData(formData: FormData) {
+  let contatos: unknown = [];
+  try {
+    contatos = JSON.parse(String(formData.get("contatos_json") ?? "[]"));
+  } catch {
+    contatos = [];
+  }
+
   const parsed = seguradoraSchema.safeParse({
     nome: formData.get("nome"),
-    susep: formData.get("susep"),
-    cnpj: formData.get("cnpj"),
-    telefone: formData.get("telefone"),
-    site: formData.get("site"),
-    obs: formData.get("obs"),
+    contatos,
   });
   if (!parsed.success) {
     throw new Error(parsed.error.issues.map((issue) => issue.message).join(", "));
   }
-  return parsed.data;
+
+  const { contatos: contatosData, ...seguradora } = parsed.data;
+  return { seguradora, contatos: contatosData.filter((c) => c.nome) };
 }
 
 export async function createSeguradora(formData: FormData) {
   await requireAdmin();
-  const seguradora = parseSeguradoraFormData(formData);
+  const { seguradora, contatos } = parseSeguradoraFormData(formData);
   const supabase = await createClient();
 
-  const { error } = await supabase.from("seguradoras").insert(seguradora);
+  const { data: created, error } = await supabase
+    .from("seguradoras")
+    .insert({ ...seguradora, susep: null, cnpj: null, telefone: null, site: null, obs: null })
+    .select("id")
+    .single();
   if (error) throw new Error(error.message);
+
+  if (contatos.length > 0) {
+    const { error: contatosError } = await supabase
+      .from("seguradoras_contatos")
+      .insert(contatos.map((c) => ({ ...c, seguradora_id: created.id })));
+    if (contatosError) throw new Error(contatosError.message);
+  }
 
   revalidatePath("/seguradoras");
   redirect("/seguradoras");
@@ -35,11 +51,21 @@ export async function createSeguradora(formData: FormData) {
 
 export async function updateSeguradora(id: string, formData: FormData) {
   await requireAdmin();
-  const seguradora = parseSeguradoraFormData(formData);
+  const { seguradora, contatos } = parseSeguradoraFormData(formData);
   const supabase = await createClient();
 
   const { error } = await supabase.from("seguradoras").update(seguradora).eq("id", id);
   if (error) throw new Error(error.message);
+
+  // Substitui os contatos por completo — mesmo padrão de clientes/actions.ts.
+  const { error: delError } = await supabase.from("seguradoras_contatos").delete().eq("seguradora_id", id);
+  if (delError) throw new Error(delError.message);
+  if (contatos.length > 0) {
+    const { error: insError } = await supabase
+      .from("seguradoras_contatos")
+      .insert(contatos.map((c) => ({ ...c, seguradora_id: id })));
+    if (insError) throw new Error(insError.message);
+  }
 
   revalidatePath("/seguradoras");
   redirect("/seguradoras");

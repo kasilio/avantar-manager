@@ -27,11 +27,13 @@ export function NovaTarefaDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger>
-        <Button type="button">
-          <Plus className="size-4" /> Nova tarefa
-        </Button>
-      </DialogTrigger>
+      <DialogTrigger
+        render={
+          <Button type="button">
+            <Plus className="size-4" /> Nova tarefa
+          </Button>
+        }
+      />
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Nova tarefa</DialogTitle>

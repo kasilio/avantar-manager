@@ -41,7 +41,11 @@ export function ProducaoForm({
       ) : (
         <div className="flex flex-col gap-2">
           <Label htmlFor="cliente_id">Cliente</Label>
-          <Select name="cliente_id" defaultValue={producao?.cliente_id}>
+          <Select
+            name="cliente_id"
+            defaultValue={producao?.cliente_id}
+            items={Object.fromEntries(clientes.map((c) => [c.id, c.nome]))}
+          >
             <SelectTrigger id="cliente_id">
               <SelectValue placeholder="Selecione o cliente" />
             </SelectTrigger>
@@ -59,7 +63,11 @@ export function ProducaoForm({
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-2">
           <Label htmlFor="tipo_produto_id">Tipo de produto</Label>
-          <Select name="tipo_produto_id" defaultValue={producao?.tipo_produto_id ?? undefined}>
+          <Select
+            name="tipo_produto_id"
+            defaultValue={producao?.tipo_produto_id ?? undefined}
+            items={Object.fromEntries(tiposProduto.map((t) => [t.id, t.nome]))}
+          >
             <SelectTrigger id="tipo_produto_id">
               <SelectValue placeholder="Selecione" />
             </SelectTrigger>
@@ -74,7 +82,11 @@ export function ProducaoForm({
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor="seguradora_id">Seguradora</Label>
-          <Select name="seguradora_id" defaultValue={producao?.seguradora_id ?? undefined}>
+          <Select
+            name="seguradora_id"
+            defaultValue={producao?.seguradora_id ?? undefined}
+            items={Object.fromEntries(seguradoras.map((s) => [s.id, s.nome]))}
+          >
             <SelectTrigger id="seguradora_id">
               <SelectValue placeholder="Selecione" />
             </SelectTrigger>
@@ -153,7 +165,11 @@ export function ProducaoForm({
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="flex flex-col gap-2">
           <Label htmlFor="vendedor_id">Vendedor</Label>
-          <Select name="vendedor_id" defaultValue={producao?.vendedor_id ?? "__none__"}>
+          <Select
+            name="vendedor_id"
+            defaultValue={producao?.vendedor_id ?? "__none__"}
+            items={{ __none__: "🏢 Unidade (sem vendedor)", ...Object.fromEntries(vendedores.map((v) => [v.id, v.nome])) }}
+          >
             <SelectTrigger id="vendedor_id">
               <SelectValue />
             </SelectTrigger>
@@ -173,7 +189,11 @@ export function ProducaoForm({
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor="status_manual">Status</Label>
-          <Select name="status_manual" defaultValue={producao?.status_manual ?? "ativa"}>
+          <Select
+            name="status_manual"
+            defaultValue={producao?.status_manual ?? "ativa"}
+            items={{ ativa: "Ativa", vencida: "Vencida", cancelada: "Cancelada" }}
+          >
             <SelectTrigger id="status_manual">
               <SelectValue />
             </SelectTrigger>

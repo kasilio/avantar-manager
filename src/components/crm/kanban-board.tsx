@@ -1,13 +1,22 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, type CSSProperties } from "react";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fmtDate } from "@/lib/format";
 import { moverProspeccao, deleteProspeccao, updateProspeccao, createProspeccao } from "@/app/(dashboard)/crm/actions";
 import { ProspeccaoDialogForm } from "./prospeccao-dialog-form";
 import { Button } from "@/components/ui/button";
-import type { Cliente, CrmColuna, Prospeccao, TipoProduto, Usuario } from "@/types/database";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import type { Cliente, CrmColuna, Prospeccao, ProspeccaoHistorico, TipoProduto, Usuario } from "@/types/database";
 
 type ProspeccaoRow = Prospeccao & { clientes: Pick<Cliente, "nome"> | null };
 
@@ -17,6 +26,7 @@ export function KanbanBoard({
   clientes,
   tiposProduto,
   vendedores,
+  historico,
   isAdmin,
 }: {
   colunas: CrmColuna[];
@@ -24,24 +34,39 @@ export function KanbanBoard({
   clientes: Cliente[];
   tiposProduto: TipoProduto[];
   vendedores: Usuario[];
+  historico: ProspeccaoHistorico[];
   isAdmin: boolean;
 }) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverColuna, setDragOverColuna] = useState<string | null>(null);
-  const [, startTransition] = useTransition();
+  const [movimento, setMovimento] = useState<{ prospeccaoId: string; colunaId: string; empresa: string; colunaLabel: string } | null>(null);
+  const [nota, setNota] = useState("");
+  const [enviando, startTransition] = useTransition();
 
   function onDrop(colunaId: string) {
-    if (draggingId) {
-      startTransition(() => {
-        moverProspeccao(draggingId, colunaId);
-      });
+    const card = draggingId ? prospeccoes.find((p) => p.id === draggingId) : null;
+    const coluna = colunas.find((c) => c.id === colunaId);
+    if (card && coluna && card.coluna_id !== colunaId) {
+      setNota("");
+      setMovimento({ prospeccaoId: card.id, colunaId, empresa: card.empresa, colunaLabel: coluna.label });
     }
     setDraggingId(null);
     setDragOverColuna(null);
   }
 
+  function confirmarMovimento() {
+    if (!movimento || !nota.trim()) return;
+    startTransition(async () => {
+      await moverProspeccao(movimento.prospeccaoId, movimento.colunaId, nota);
+      setMovimento(null);
+    });
+  }
+
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+    <div
+      className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:[grid-template-columns:repeat(var(--num-colunas),minmax(0,1fr))]"
+      style={{ "--num-colunas": colunas.length } as CSSProperties}
+    >
       {colunas.map((coluna) => {
         const cards = prospeccoes.filter((p) => p.coluna_id === coluna.id);
         return (
@@ -72,6 +97,8 @@ export function KanbanBoard({
                 clientes={clientes}
                 tiposProduto={tiposProduto}
                 vendedores={vendedores}
+                colunas={colunas}
+                historico={[]}
                 isAdmin={isAdmin}
                 action={createProspeccao}
                 trigger={
@@ -101,6 +128,8 @@ export function KanbanBoard({
                     clientes={clientes}
                     tiposProduto={tiposProduto}
                     vendedores={vendedores}
+                    colunas={colunas}
+                    historico={historico.filter((h) => h.prospeccao_id === card.id)}
                     isAdmin={isAdmin}
                     action={updateProspeccao.bind(null, card.id)}
                     trigger={
@@ -130,6 +159,33 @@ export function KanbanBoard({
           </div>
         );
       })}
+
+      <Dialog open={movimento !== null} onOpenChange={(open) => !open && setMovimento(null)}>
+        {movimento && (
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Mover &quot;{movimento.empresa}&quot; para {movimento.colunaLabel}</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="nota-movimento">Observação (obrigatória)</Label>
+              <Textarea
+                id="nota-movimento"
+                value={nota}
+                onChange={(e) => setNota(e.target.value)}
+                rows={3}
+                autoFocus
+                placeholder="O que aconteceu nessa negociação?"
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setMovimento(null)}>Cancelar</Button>
+              <Button type="button" onClick={confirmarMovimento} disabled={!nota.trim() || enviando}>
+                {enviando ? "Movendo..." : "Confirmar"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
     </div>
   );
 }

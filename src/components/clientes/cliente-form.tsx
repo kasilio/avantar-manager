@@ -44,9 +44,13 @@ export function ClienteForm({
   action: (formData: FormData) => void;
 }) {
   const [tipoDoc, setTipoDoc] = useState<"cnpj" | "cpf">(cliente?.tipo_doc ?? "cnpj");
-  const [contatos, setContatos] = useState<Contato[]>(
-    contatosIniciais && contatosIniciais.length > 0 ? contatosIniciais.map(toContato) : [],
-  );
+  const [contatos, setContatos] = useState<Contato[]>(() => {
+    if (contatosIniciais && contatosIniciais.length > 0) return contatosIniciais.map(toContato);
+    // PJ: já abre um contato em branco pra cadastrar a pessoa física
+    // responsável — é de lá que vem o aniversário usado na automação de
+    // parabéns por WhatsApp.
+    return tipoDoc === "cnpj" ? [toContato()] : [];
+  });
   const [buscandoCnpj, setBuscandoCnpj] = useState(false);
   const [buscandoCep, setBuscandoCep] = useState(false);
 
@@ -263,7 +267,11 @@ export function ClienteForm({
 
       <div className="flex flex-col gap-2 sm:w-64">
         <Label htmlFor="status">Status</Label>
-        <Select name="status" defaultValue={cliente?.status ?? "prospect"}>
+        <Select
+          name="status"
+          defaultValue={cliente?.status ?? "prospect"}
+          items={{ prospect: "🔵 Prospect", ativo: "🟢 Ativo", inativo: "⚫ Inativo" }}
+        >
           <SelectTrigger id="status">
             <SelectValue />
           </SelectTrigger>
@@ -277,7 +285,14 @@ export function ClienteForm({
 
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
-          <div className="text-sm font-medium">Contatos</div>
+          <div className="text-sm font-medium">
+            Contatos
+            {tipoDoc === "cnpj" && (
+              <span className="ml-2 font-normal text-xs text-muted-foreground">
+                cadastre a pessoa física responsável — o aniversário dela gera o lembrete automático de parabéns
+              </span>
+            )}
+          </div>
           <Button type="button" variant="outline" size="sm" onClick={addContato}>
             <Plus className="size-4" /> Adicionar contato
           </Button>

@@ -4,7 +4,10 @@ import { createClient } from "@/lib/supabase/server";
 
 export default async function SeguradorasPage() {
   const supabase = await createClient();
-  const { data: seguradoras } = await supabase.from("seguradoras").select("*").order("nome");
+  const [{ data: seguradoras }, { data: contatos }] = await Promise.all([
+    supabase.from("seguradoras").select("*").order("nome"),
+    supabase.from("seguradoras_contatos").select("*"),
+  ]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -12,7 +15,7 @@ export default async function SeguradorasPage() {
         <h1 className="text-2xl font-semibold">Seguradoras</h1>
         <LinkButton href="/seguradoras/novo">Nova seguradora</LinkButton>
       </div>
-      <SeguradoraTable seguradoras={seguradoras ?? []} />
+      <SeguradoraTable seguradoras={seguradoras ?? []} contatos={contatos ?? []} />
     </div>
   );
 }

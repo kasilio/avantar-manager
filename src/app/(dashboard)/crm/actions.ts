@@ -6,10 +6,54 @@ import { requireCurrentUsuario } from "@/lib/auth/get-current-usuario";
 import { prospeccaoSchema } from "@/lib/validations/prospeccao";
 import { today } from "@/lib/format";
 
-function parseProspeccaoFormData(formData: FormData) {
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+
+/** "Empresa" no formulário de prospecção é sempre um cliente cadastrado —
+ * `cliente_id === "__novo__"` cria um cliente novo só com o nome digitado
+ * (o cadastro completo pode ser preenchido depois em Clientes). */
+async function resolverClienteEEmpresa(
+  supabase: SupabaseServerClient,
+  clienteId: string,
+  novoNome: string,
+): Promise<{ cliente_id: string; empresa: string }> {
+  if (clienteId === "__novo__") {
+    const nome = novoNome.trim();
+    if (!nome) throw new Error("Informe o nome da empresa.");
+    const { data: criado, error } = await supabase
+      .from("clientes")
+      .insert({
+        nome,
+        tipo_doc: "cnpj",
+        fantasia: null,
+        cnpj: null,
+        cpf: null,
+        nascimento: null,
+        situacao: null,
+        cep: null,
+        logradouro: null,
+        numero: null,
+        bairro: null,
+        cidade: null,
+        cnae: null,
+        porte: null,
+        tel: null,
+        email_com: null,
+        obs: null,
+      })
+      .select("id, nome")
+      .single();
+    if (error) throw new Error(error.message);
+    return { cliente_id: criado.id, empresa: criado.nome };
+  }
+  const { data: cliente, error } = await supabase.from("clientes").select("nome").eq("id", clienteId).single();
+  if (error || !cliente) throw new Error("Empresa/cliente não encontrado — selecione novamente.");
+  return { cliente_id: clienteId, empresa: cliente.nome };
+}
+
+async function parseProspeccaoFormData(supabase: SupabaseServerClient, formData: FormData) {
   const parsed = prospeccaoSchema.safeParse({
-    empresa: formData.get("empresa"),
     cliente_id: formData.get("cliente_id"),
+    empresa_novo_nome: formData.get("empresa_novo_nome"),
     tipo_produto_id: formData.get("tipo_produto_id"),
     coluna_id: formData.get("coluna_id") || "novo",
     next_contact: formData.get("next_contact"),
@@ -19,14 +63,15 @@ function parseProspeccaoFormData(formData: FormData) {
   if (!parsed.success) {
     throw new Error(parsed.error.issues.map((issue) => issue.message).join(", "));
   }
-  const data = parsed.data;
-  return { ...data, next_contact: data.next_contact || null };
+  const { cliente_id, empresa_novo_nome, ...data } = parsed.data;
+  const { cliente_id: resolvedClienteId, empresa } = await resolverClienteEEmpresa(supabase, cliente_id, empresa_novo_nome);
+  return { ...data, cliente_id: resolvedClienteId, empresa, next_contact: data.next_contact || null };
 }
 
 export async function createProspeccao(formData: FormData) {
   const usuario = await requireCurrentUsuario();
-  const prospeccao = parseProspeccaoFormData(formData);
   const supabase = await createClient();
+  const prospeccao = await parseProspeccaoFormData(supabase, formData);
 
   const { error } = await supabase.from("prospeccoes").insert({
     ...prospeccao,
@@ -39,8 +84,8 @@ export async function createProspeccao(formData: FormData) {
 
 export async function updateProspeccao(id: string, formData: FormData) {
   await requireCurrentUsuario();
-  const prospeccao = parseProspeccaoFormData(formData);
   const supabase = await createClient();
+  const prospeccao = await parseProspeccaoFormData(supabase, formData);
 
   const { error } = await supabase.from("prospeccoes").update(prospeccao).eq("id", id);
   if (error) throw new Error(error.message);
@@ -58,13 +103,34 @@ export async function deleteProspeccao(id: string) {
   revalidatePath("/crm");
 }
 
-/** Chamado pelo drag-and-drop do kanban — só move de coluna. */
-export async function moverProspeccao(id: string, colunaId: string) {
-  await requireCurrentUsuario();
+/** Move uma prospecção de coluna — seja arrastando o card no kanban, seja
+ * pelo botão "Enviar para a próxima etapa" dentro do detalhe. Toda
+ * movimentação exige uma observação, que fica registrada no histórico da
+ * negociação (prospeccoes_historico). */
+export async function moverProspeccao(id: string, colunaId: string, nota: string) {
+  const usuario = await requireCurrentUsuario();
+  const notaLimpa = nota.trim();
+  if (!notaLimpa) throw new Error("Escreva uma observação sobre essa movimentação.");
   const supabase = await createClient();
+
+  const { data: atual, error: buscaError } = await supabase
+    .from("prospeccoes")
+    .select("coluna_id")
+    .eq("id", id)
+    .single();
+  if (buscaError || !atual) throw new Error("Prospecção não encontrada.");
 
   const { error } = await supabase.from("prospeccoes").update({ coluna_id: colunaId }).eq("id", id);
   if (error) throw new Error(error.message);
+
+  const { error: histError } = await supabase.from("prospeccoes_historico").insert({
+    prospeccao_id: id,
+    coluna_anterior: atual.coluna_id,
+    coluna_nova: colunaId,
+    nota: notaLimpa,
+    usuario_id: usuario.id,
+  });
+  if (histError) throw new Error(histError.message);
 
   revalidatePath("/crm");
 }
