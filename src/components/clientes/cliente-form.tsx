@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useFormStatus } from "react-dom";
 import { Loader2, Plus, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +24,16 @@ type Contato = {
   email: string;
   aniversario: string;
 };
+
+function SubmitButton({ cliente }: { cliente?: Cliente }) {
+  const { pending } = useFormStatus();
+  return (
+    <Button type="submit" disabled={pending} className="self-start">
+      {pending && <Loader2 className="size-4 animate-spin" />}
+      {pending ? "Salvando..." : cliente ? "Salvar alterações" : "Cadastrar cliente"}
+    </Button>
+  );
+}
 
 function toContato(c?: ClienteContato): Contato {
   return {
@@ -330,9 +341,7 @@ export function ClienteForm({
         <Textarea id="obs" name="obs" defaultValue={cliente?.obs ?? ""} rows={3} />
       </div>
 
-      <Button type="submit" className="self-start">
-        {cliente ? "Salvar alterações" : "Cadastrar cliente"}
-      </Button>
+      <SubmitButton cliente={cliente} />
     </form>
   );
 }
