@@ -173,7 +173,13 @@ export async function previewImportacao(arquivos: { nome: string; data: Uint8Arr
   let linhas: PreviewLinha[] = [];
 
   for (const arquivo of arquivos) {
-    const relatorio = await parseRepassePdf(arquivo.data, arquivo.nome);
+    let relatorio: RepasseRelatorioParsed;
+    try {
+      relatorio = await parseRepassePdf(arquivo.data, arquivo.nome);
+    } catch (err) {
+      const motivo = err instanceof Error ? err.message : String(err);
+      throw new Error(`Erro ao ler o PDF "${arquivo.nome}": ${motivo}`);
+    }
     relatorios.push({
       arquivo: relatorio.arquivo,
       periodoInicio: relatorio.periodoInicio,

@@ -48,21 +48,22 @@ export function ImportarRepassesForm() {
     for (const f of Array.from(files)) formData.append("arquivos", f);
 
     startAnalise(async () => {
-      try {
-        const resultado = await previewImportacao(formData);
-        setPreview(resultado);
-        setResultado(null);
-        const inc: Record<string, boolean> = {};
-        const doc: Record<string, "cnpj" | "cpf"> = {};
-        for (const l of resultado.linhas) {
-          inc[chaveLinha(l)] = !l.jaImportado;
-          doc[chaveLinha(l)] = l.tipoDocSugerido;
-        }
-        setIncluidas(inc);
-        setTiposDoc(doc);
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Erro ao analisar os PDFs.");
+      const resposta = await previewImportacao(formData);
+      if (!resposta.ok) {
+        toast.error(resposta.message);
+        return;
       }
+      const resultado = resposta.data;
+      setPreview(resultado);
+      setResultado(null);
+      const inc: Record<string, boolean> = {};
+      const doc: Record<string, "cnpj" | "cpf"> = {};
+      for (const l of resultado.linhas) {
+        inc[chaveLinha(l)] = !l.jaImportado;
+        doc[chaveLinha(l)] = l.tipoDocSugerido;
+      }
+      setIncluidas(inc);
+      setTiposDoc(doc);
     });
   }
 
@@ -97,14 +98,14 @@ export function ImportarRepassesForm() {
     }
 
     startConfirmacao(async () => {
-      try {
-        const res = await confirmarImportacao(preview.relatorios, linhas);
-        setResultado(res);
-        setPreview(null);
-        toast.success("Importação concluída.");
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Erro ao confirmar a importação.");
+      const resposta = await confirmarImportacao(preview.relatorios, linhas);
+      if (!resposta.ok) {
+        toast.error(resposta.message);
+        return;
       }
+      setResultado(resposta.data);
+      setPreview(null);
+      toast.success("Importação concluída.");
     });
   }
 
