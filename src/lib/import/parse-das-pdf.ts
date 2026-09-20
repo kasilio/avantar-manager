@@ -1,4 +1,5 @@
 import "server-only";
+import { loadPdfjs } from "./pdfjs";
 
 // Leitura best-effort do DAS (Documento de Arrecadação do Simples Nacional) —
 // layout padrão da Receita Federal, mas nunca testado contra um PDF real
@@ -19,7 +20,7 @@ function parseMoney(raw: string): number | null {
 }
 
 export async function parseDasPdf(data: Uint8Array): Promise<DasParsed> {
-  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const pdfjsLib = await loadPdfjs();
   const doc = await pdfjsLib.getDocument({ data, useWorkerFetch: false }).promise;
 
   const partes: string[] = [];

@@ -1,4 +1,5 @@
 import "server-only";
+import { loadPdfjs } from "./pdfjs";
 
 // Parser sob medida pro relatório "PRP01 - Previsão Repasses a pagar" do
 // SGCOR (sistema da matriz/Avantar). Usa pdfjs-dist pra ler cada item de
@@ -158,7 +159,7 @@ function periodoParaMes(periodoInicio: string | null): string | null {
 }
 
 export async function parseRepassePdf(data: Uint8Array, arquivo: string): Promise<RepasseRelatorioParsed> {
-  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const pdfjsLib = await loadPdfjs();
   const doc = await pdfjsLib.getDocument({ data, useWorkerFetch: false }).promise;
 
   const allItems: Item[] = [];

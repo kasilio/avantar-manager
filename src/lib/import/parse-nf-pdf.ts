@@ -1,4 +1,5 @@
 import "server-only";
+import { loadPdfjs } from "./pdfjs";
 
 // Parser da DANFSe (NFS-e nacional). O rótulo/valor é fixo em qualquer
 // município desde a unificação nacional, então dá pra ler por regex sobre o
@@ -23,7 +24,7 @@ function parseMoney(raw: string): number | null {
 }
 
 export async function parseNfPdf(data: Uint8Array): Promise<NfParsed> {
-  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const pdfjsLib = await loadPdfjs();
   const doc = await pdfjsLib.getDocument({ data, useWorkerFetch: false }).promise;
 
   const partes: string[] = [];
