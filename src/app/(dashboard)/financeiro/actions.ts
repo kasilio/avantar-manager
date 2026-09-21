@@ -9,15 +9,20 @@ import { diasNoMes, mesLabel, periodoAtual } from "@/lib/format";
 import { regenerarTarefasDespesa } from "@/lib/despesas-tarefas";
 
 function parseDespesaFormData(formData: FormData) {
+  // Os campos "data", "parcelas_total" e "parcela_inicio" só existem no DOM
+  // quando o tipo correspondente está selecionado (ver despesa-dialog-form.tsx)
+  // — pros outros tipos, formData.get() volta null, e o schema (z.string())
+  // rejeita null (só aceita string | undefined), então sem o `?? ""` o
+  // cadastro quebrava com "Expected string, received null" pra todo tipo.
   const parsed = despesaSchema.safeParse({
     tipo: formData.get("tipo"),
     descricao: formData.get("descricao"),
     valor: formData.get("valor"),
-    categoria: formData.get("categoria"),
-    dia_vencimento: formData.get("dia_vencimento"),
-    data: formData.get("data"),
-    parcelas_total: formData.get("parcelas_total"),
-    parcela_inicio: formData.get("parcela_inicio"),
+    categoria: formData.get("categoria") ?? "",
+    dia_vencimento: formData.get("dia_vencimento") ?? "",
+    data: formData.get("data") ?? "",
+    parcelas_total: formData.get("parcelas_total") ?? "",
+    parcela_inicio: formData.get("parcela_inicio") ?? "",
   });
   if (!parsed.success) {
     throw new Error(parsed.error.issues.map((issue) => issue.message).join(", "));
