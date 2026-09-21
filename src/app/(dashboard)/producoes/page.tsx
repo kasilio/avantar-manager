@@ -1,4 +1,5 @@
 import { LinkButton } from "@/components/shared/link-button";
+import { SearchSelect } from "@/components/shared/search-select";
 import { ProducaoTable, type ProducaoRow } from "@/components/producoes/producao-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,7 +58,6 @@ export default async function ProducoesPage({
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Produções</h1>
-        <LinkButton href="/producoes/novo">Nova produção</LinkButton>
       </div>
 
       <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border p-3">
@@ -72,19 +72,17 @@ export default async function ProducoesPage({
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="cliente_id" className="text-xs">Cliente</Label>
-            <Select
+            <SearchSelect
+              id="cliente_id"
               name="cliente_id"
               defaultValue={cliente_id ?? "__todos__"}
-              items={{ __todos__: "Todos os clientes", ...Object.fromEntries(clientes.map((c) => [c.id, c.nome])) }}
-            >
-              <SelectTrigger id="cliente_id" className="w-56"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__todos__">Todos os clientes</SelectItem>
-                {clientes.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              placeholder="Buscar cliente..."
+              className="w-56"
+              items={[
+                { value: "__todos__", label: "Todos os clientes" },
+                ...clientes.map((c) => ({ value: c.id, label: c.nome })),
+              ]}
+            />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="tipo_produto_id" className="text-xs">Tipo de produto</Label>
