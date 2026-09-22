@@ -72,9 +72,11 @@ export default async function RepassesPage({
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Repasses</h1>
-        <div className="flex gap-2">
-          <LinkButton href="/repasses/importar">Importar repasses</LinkButton>
-        </div>
+        {isAdmin && (
+          <div className="flex gap-2">
+            <LinkButton href="/repasses/importar">Importar repasses</LinkButton>
+          </div>
+        )}
       </div>
 
       <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border p-3">

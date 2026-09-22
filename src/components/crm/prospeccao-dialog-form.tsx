@@ -135,6 +135,10 @@ export function ProspeccaoDialogForm({
   function nomeAutor(usuarioId: string | null) {
     return vendedores.find((v) => v.id === usuarioId)?.nome ?? "—";
   }
+  // "vendedores" também carrega admins (pra resolver nomeAutor do histórico,
+  // que pode ter sido movido por qualquer um) — o seletor abaixo só faz
+  // sentido com quem de fato é vendedor.
+  const opcoesVendedor = vendedores.filter((v) => v.papel === "vendedor");
   function labelColuna(id: string) {
     return colunas.find((c) => c.id === id)?.label ?? id;
   }
@@ -194,14 +198,14 @@ export function ProspeccaoDialogForm({
               <Select
                 name="vendedor_id"
                 defaultValue={prospeccao?.vendedor_id ?? "__none__"}
-                items={{ __none__: "🏢 Unidade", ...Object.fromEntries(vendedores.map((v) => [v.id, v.nome])) }}
+                items={{ __none__: "🏢 Unidade", ...Object.fromEntries(opcoesVendedor.map((v) => [v.id, v.nome])) }}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">🏢 Unidade</SelectItem>
-                  {vendedores.map((v) => (
+                  {opcoesVendedor.map((v) => (
                     <SelectItem key={v.id} value={v.id}>{v.nome}</SelectItem>
                   ))}
                 </SelectContent>

@@ -111,7 +111,9 @@ export function KanbanBoard({
             {coluna.nota && <p className="px-1 text-[11px] text-muted-foreground">{coluna.nota}</p>}
 
             <div className="flex flex-col gap-2">
-              {cards.map((card) => (
+              {cards.map((card) => {
+                const vendedorNome = card.vendedor_id ? vendedores.find((v) => v.id === card.vendedor_id)?.nome : null;
+                return (
                 <div
                   key={card.id}
                   draggable
@@ -143,6 +145,11 @@ export function KanbanBoard({
                             Próx. contato: {fmtDate(card.next_contact)}
                           </div>
                         )}
+                        {isAdmin && (
+                          <div className="mt-1 text-[11px] text-primary">
+                            {vendedorNome ? `👤 ${vendedorNome}` : "🏢 Unidade"}
+                          </div>
+                        )}
                       </div>
                     }
                   />
@@ -154,7 +161,8 @@ export function KanbanBoard({
                     Remover
                   </button>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         );
