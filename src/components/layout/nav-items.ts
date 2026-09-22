@@ -28,7 +28,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/producoes", label: "Produções", icon: ShieldCheck, adminOnly: true },
   { href: "/repasses", label: "Repasses", icon: FileStack },
   { href: "/tarefas", label: "Tarefas", icon: CheckSquare },
-  { href: "/financeiro", label: "Financeiro", icon: Wallet, adminOnly: true, mobilePrimary: true },
+  { href: "/financeiro", label: "Financeiro", icon: Wallet, mobilePrimary: true },
   { href: "/seguradoras", label: "Seguradoras", icon: Landmark, adminOnly: true },
   { href: "/tipos-produto", label: "Tipos de Produto", icon: Tags, adminOnly: true },
   { href: "/usuarios", label: "Usuários", icon: Users, adminOnly: true },

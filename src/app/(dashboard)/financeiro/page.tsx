@@ -1,19 +1,141 @@
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Lock, LockOpen } from "lucide-react";
+import { ChevronLeft, ChevronRight, Lock, LockOpen, TrendingUp, Wallet } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { LinkButton } from "@/components/shared/link-button";
 import { DespesaDialogForm } from "@/components/financeiro/despesa-dialog-form";
 import { DespesasList } from "@/components/financeiro/despesas-list";
 import { SettingsDialogForm } from "@/components/financeiro/settings-dialog-form";
 import { FecharMesDialogForm } from "@/components/financeiro/fechar-mes-dialog-form";
+import { MonthlyBarChart } from "@/components/dashboard/monthly-bar-chart";
 import { createClient } from "@/lib/supabase/server";
+import { requireCurrentUsuario } from "@/lib/auth/get-current-usuario";
 import { fmtDate, fmtMoney, mesLabel, shiftPeriodo, periodoAtual } from "@/lib/format";
 import { periodosParcelada } from "@/lib/despesas-tarefas";
 import type { FechamentoMensal } from "@/types/database";
 import { createDespesa, reabrirMes } from "./actions";
+
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+
+/** Vendedor não tem DRE (despesas/DAS são da empresa, RLS nem deixa ele ler
+ * essas tabelas) — só o histórico mês a mês do que ele faturou e do que é
+ * comissão dele de fato, pra saber quanto recebeu em cada período. */
+async function FinanceiroVendedor({ supabase, periodo }: { supabase: SupabaseServerClient; periodo: string }) {
+  const atual = periodoAtual();
+  const meses = Array.from({ length: 12 }, (_, i) => shiftPeriodo(atual, i - 11));
+
+  const { data: repassesRaw } = await supabase
+    .from("repasses")
+    .select("periodo, comissao_bruta, producoes(comissao_pct), repasses_lotes(status)")
+    .gte("periodo", meses[0]);
+  const rows = (repassesRaw ?? []) as unknown as Array<{
+    periodo: string;
+    comissao_bruta: number | null;
+    producoes: { comissao_pct: number | null } | null;
+    repasses_lotes: { status: string } | null;
+  }>;
+
+  const faturadoPorMes = new Map(meses.map((m) => [m, 0]));
+  const comissaoPorMes = new Map(meses.map((m) => [m, 0]));
+  for (const r of rows) {
+    if (r.repasses_lotes?.status !== "pago" || !faturadoPorMes.has(r.periodo)) continue;
+    const bruto = Number(r.comissao_bruta ?? 0);
+    faturadoPorMes.set(r.periodo, (faturadoPorMes.get(r.periodo) ?? 0) + bruto);
+    const pct = Number(r.producoes?.comissao_pct ?? 0) / 100;
+    comissaoPorMes.set(r.periodo, (comissaoPorMes.get(r.periodo) ?? 0) + bruto * pct);
+  }
+
+  const faturadoMes = faturadoPorMes.get(periodo) ?? 0;
+  const comissaoMes = comissaoPorMes.get(periodo) ?? 0;
+  const evolucaoComissao = meses.map((m) => ({ periodo: m, valor: comissaoPorMes.get(m) ?? 0 }));
+  const linhasTabela = [...meses].reverse();
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold">Financeiro</h1>
+        <div className="flex items-center gap-2">
+          <Link href={`/financeiro?mes=${shiftPeriodo(periodo, -1)}`}>
+            <Button type="button" variant="outline" size="icon"><ChevronLeft className="size-4" /></Button>
+          </Link>
+          <Link
+            href={`/financeiro?mes=${periodoAtual()}`}
+            title="Voltar para o mês atual"
+            className="min-w-32 rounded-md px-2 py-1 text-center text-sm font-medium capitalize hover:bg-muted"
+          >
+            {mesLabel(periodo)}
+          </Link>
+          <Link href={`/financeiro?mes=${shiftPeriodo(periodo, 1)}`}>
+            <Button type="button" variant="outline" size="icon"><ChevronRight className="size-4" /></Button>
+          </Link>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 sm:max-w-md">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-xs font-medium text-muted-foreground">Faturado</CardTitle>
+            <Wallet className="size-4 text-primary" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-xl font-bold">{fmtMoney(faturadoMes)}</div>
+          </CardContent>
+        </Card>
+        <Card className="border-success/30 bg-success/5">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-xs font-medium text-muted-foreground">Sua comissão</CardTitle>
+            <Wallet className="size-4 text-success" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-xl font-bold text-success">{fmtMoney(comissaoMes)}</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <TrendingUp className="size-4 text-primary" /> Sua comissão mês a mês
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <MonthlyBarChart dados={evolucaoComissao} cor="success" />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Histórico mensal</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Mês</TableHead>
+                  <TableHead>Faturado</TableHead>
+                  <TableHead>Sua comissão</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {linhasTabela.map((m) => (
+                  <TableRow key={m}>
+                    <TableCell className="capitalize">{mesLabel(m)}</TableCell>
+                    <TableCell className="text-muted-foreground">{fmtMoney(faturadoPorMes.get(m) ?? 0)}</TableCell>
+                    <TableCell className="font-medium text-success">{fmtMoney(comissaoPorMes.get(m) ?? 0)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
 export default async function FinanceiroPage({
   searchParams,
@@ -25,7 +147,13 @@ export default async function FinanceiroPage({
   const modoTudo = tudo === "1";
   const periodo = mes || periodoAtual();
 
+  const usuario = await requireCurrentUsuario();
   const supabase = await createClient();
+
+  if (usuario.papel !== "admin") {
+    return <FinanceiroVendedor supabase={supabase} periodo={periodo} />;
+  }
+
   const [{ data: repasses }, { data: despesas }, { data: pagamentos }, { data: settingsRow }, { data: fechamentoRow }, { data: historicoValores }] = await Promise.all([
     modoIntervalo || modoTudo
       ? supabase.from("repasses").select("*, producoes(comissao_pct), repasses_lotes(status, data_pagamento)")

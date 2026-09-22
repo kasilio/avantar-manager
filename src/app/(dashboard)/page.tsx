@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, AlertTriangle, Cake, MessagesSquare, Wallet, ShieldCheck, Building2, Target, CalendarDays } from "lucide-react";
+import { ChevronLeft, ChevronRight, AlertTriangle, Cake, MessagesSquare, Wallet, ShieldCheck, Building2, Target, CalendarDays, TrendingUp } from "lucide-react";
 import { MonthCalendar } from "@/components/tarefas/month-calendar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { RankingList } from "@/components/dashboard/ranking-list";
 import { MetaDialogForm } from "@/components/dashboard/meta-dialog-form";
+import { MonthlyBarChart } from "@/components/dashboard/monthly-bar-chart";
 import { createClient } from "@/lib/supabase/server";
 import { requireCurrentUsuario } from "@/lib/auth/get-current-usuario";
 import { fmtMoney, fmtDate, periodoAtual, shiftPeriodo, mesLabel, diasNoMes, diaDoMes } from "@/lib/format";
@@ -121,6 +122,33 @@ export default async function DashboardPage({
   const { data: settingsRow } = await supabase.from("settings").select("*").eq("id", true).single();
   const aliquota = Number(settingsRow?.aliquota_simples ?? 6);
   const simples = comissaoBruta * (aliquota / 100);
+
+  // Evolução mês a mês (últimos 6 meses, incluindo o atual) — faturamento
+  // bruto pro admin, comissão já ponderada pela % de cada produção pro
+  // vendedor (RLS já limita `repasses` à carteira dele).
+  const mesesEvolucao = Array.from({ length: 6 }, (_, i) => shiftPeriodo(atual, i - 5));
+  const { data: repassesEvolucaoRaw } = await supabase
+    .from("repasses")
+    .select("periodo, comissao_bruta, producoes(comissao_pct), repasses_lotes(status)")
+    .gte("periodo", mesesEvolucao[0])
+    .lte("periodo", atual);
+  const evolucaoRows = (repassesEvolucaoRaw ?? []) as unknown as Array<{
+    periodo: string;
+    comissao_bruta: number | null;
+    producoes: { comissao_pct: number | null } | null;
+    repasses_lotes: { status: string } | null;
+  }>;
+  const faturamentoPorMes = new Map(mesesEvolucao.map((m) => [m, 0]));
+  const comissaoPorMes = new Map(mesesEvolucao.map((m) => [m, 0]));
+  for (const r of evolucaoRows) {
+    if (r.repasses_lotes?.status !== "pago" || !faturamentoPorMes.has(r.periodo)) continue;
+    const bruto = Number(r.comissao_bruta ?? 0);
+    faturamentoPorMes.set(r.periodo, (faturamentoPorMes.get(r.periodo) ?? 0) + bruto);
+    const pct = Number(r.producoes?.comissao_pct ?? 0) / 100;
+    comissaoPorMes.set(r.periodo, (comissaoPorMes.get(r.periodo) ?? 0) + bruto * pct);
+  }
+  const evolucaoFaturamento = mesesEvolucao.map((periodo) => ({ periodo, valor: faturamentoPorMes.get(periodo) ?? 0 }));
+  const evolucaoComissao = mesesEvolucao.map((periodo) => ({ periodo, valor: comissaoPorMes.get(periodo) ?? 0 }));
 
   const hoje = new Date();
   const hojeStr = hoje.toISOString().slice(0, 10);
@@ -317,6 +345,18 @@ export default async function DashboardPage({
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <TrendingUp className="size-4 text-primary" />
+            {isAdmin ? "Faturamento mês a mês" : "Sua comissão mês a mês"}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <MonthlyBarChart dados={isAdmin ? evolucaoFaturamento : evolucaoComissao} cor={isAdmin ? "primary" : "success"} />
+        </CardContent>
+      </Card>
 
       {isAdmin && (
         <Card>
