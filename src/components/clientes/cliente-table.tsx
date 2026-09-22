@@ -25,18 +25,21 @@ function SortHeader({
   col,
   sort,
   dir,
+  status,
 }: {
   label: string;
   col: "nome" | "faturamento";
   sort: "nome" | "faturamento";
   dir: "asc" | "desc";
+  status?: string;
 }) {
   const ativo = sort === col;
   const proximaDir = ativo && dir === "asc" ? "desc" : "asc";
   const Icone = ativo ? (dir === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
+  const statusParam = status ? `&status=${status}` : "";
   return (
     <Link
-      href={`/clientes?sort=${col}&dir=${proximaDir}`}
+      href={`/clientes?sort=${col}&dir=${proximaDir}${statusParam}`}
       className={`inline-flex items-center gap-1 hover:text-primary ${ativo ? "text-primary" : ""}`}
     >
       {label}
@@ -49,15 +52,17 @@ export function ClienteTable({
   clientes,
   sort,
   dir,
+  status,
 }: {
   clientes: ClienteResumo[];
   sort: "nome" | "faturamento";
   dir: "asc" | "desc";
+  status?: string;
 }) {
   if (clientes.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-        Nenhum cliente cadastrado ainda.
+        {status ? "Nenhum cliente encontrado pra esse filtro." : "Nenhum cliente cadastrado ainda."}
       </div>
     );
   }
@@ -67,10 +72,10 @@ export function ClienteTable({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead><SortHeader label="Nome" col="nome" sort={sort} dir={dir} /></TableHead>
+            <TableHead><SortHeader label="Nome" col="nome" sort={sort} dir={dir} status={status} /></TableHead>
             <TableHead className="hidden md:table-cell">CPF/CNPJ</TableHead>
             <TableHead className="hidden md:table-cell">Cidade/UF</TableHead>
-            <TableHead><SortHeader label="Faturamento" col="faturamento" sort={sort} dir={dir} /></TableHead>
+            <TableHead><SortHeader label="Faturamento" col="faturamento" sort={sort} dir={dir} status={status} /></TableHead>
             <TableHead>Status</TableHead>
             <TableHead className="hidden md:table-cell">Vigência</TableHead>
           </TableRow>
