@@ -1,5 +1,3 @@
-import { fmtMoney } from "@/lib/format";
-
 export interface MonthlyBarChartPonto {
   periodo: string; // "YYYY-MM"
   valor: number;
@@ -12,12 +10,22 @@ function labelPeriodo(periodo: string): string {
   return `${MESES_ABREV[(mes ?? 1) - 1]}/${String(ano).slice(2)}`;
 }
 
+/** Versão compacta do valor pra caber ao lado de 11 irmãs sem estourar a
+ * largura do card ("R$ 16k" em vez de "R$ 15.995,70") — a barra já mostra a
+ * magnitude, o rótulo só precisa dar uma leitura rápida. */
+function fmtMoneyCompacto(valor: number): string {
+  const abs = Math.abs(valor);
+  if (abs >= 1000) {
+    return `R$ ${(valor / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}k`;
+  }
+  return `R$ ${valor.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`;
+}
+
 /** Barras verticais simples pra evolução mês a mês — sem lib de gráfico,
- * consistente com o resto do dashboard (ver RankingList). Valor sempre visível
- * na ponta de cada barra (rótulo direto em fluxo normal, não tooltip
- * posicionado — % de margin resolve contra a largura do container, não a
- * altura, então empurrar um tooltip com margin-bottom em % nunca fica no
- * lugar certo). */
+ * consistente com o resto do dashboard (ver RankingList). Largura flexível
+ * (flex-1, sem overflow/scroll): todos os meses sempre cabem no card, só
+ * ficam mais finos quando são muitos. Valor sempre visível na ponta de cada
+ * barra (rótulo direto em fluxo normal, não tooltip posicionado). */
 export function MonthlyBarChart({
   dados,
   cor = "primary",
@@ -33,19 +41,17 @@ export function MonthlyBarChart({
   const corBarra = cor === "success" ? "bg-success" : "bg-primary";
 
   return (
-    <div className="overflow-x-auto">
-      <div className="flex min-w-fit items-end gap-3 sm:gap-4" style={{ height: 180 }}>
-        {dados.map((d) => {
-          const pct = maior > 0 ? Math.max((d.valor / maior) * 100, d.valor > 0 ? 4 : 1.5) : 1.5;
-          return (
-            <div key={d.periodo} className="flex h-full w-14 shrink-0 flex-col items-center justify-end gap-1.5">
-              <span className="whitespace-nowrap text-[11px] font-semibold">{fmtMoney(d.valor)}</span>
-              <div className={`w-full max-w-10 rounded-t-md ${corBarra}`} style={{ height: `${pct}%`, minHeight: 3 }} />
-              <span className="text-[11px] capitalize text-muted-foreground">{labelPeriodo(d.periodo)}</span>
-            </div>
-          );
-        })}
-      </div>
+    <div className="flex items-end gap-1.5 sm:gap-2" style={{ height: 180 }}>
+      {dados.map((d) => {
+        const pct = maior > 0 ? Math.max((d.valor / maior) * 100, d.valor > 0 ? 4 : 1.5) : 1.5;
+        return (
+          <div key={d.periodo} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1.5">
+            <span className="whitespace-nowrap text-[10px] font-semibold sm:text-[11px]">{fmtMoneyCompacto(d.valor)}</span>
+            <div className={`w-full max-w-10 rounded-t-md ${corBarra}`} style={{ height: `${pct}%`, minHeight: 3 }} />
+            <span className="whitespace-nowrap text-[10px] capitalize text-muted-foreground sm:text-[11px]">{labelPeriodo(d.periodo)}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
