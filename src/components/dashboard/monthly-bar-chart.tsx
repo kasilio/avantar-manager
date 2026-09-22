@@ -1,6 +1,3 @@
-"use client";
-
-import { useState } from "react";
 import { fmtMoney } from "@/lib/format";
 
 export interface MonthlyBarChartPonto {
@@ -15,9 +12,12 @@ function labelPeriodo(periodo: string): string {
   return `${MESES_ABREV[(mes ?? 1) - 1]}/${String(ano).slice(2)}`;
 }
 
-/** Barras verticais simples pra evolução mês a mês — sem libs de gráfico,
- * consistente com o resto do dashboard (ver RankingList). Uma série só, tooltip
- * no hover, último mês com rótulo direto (âncora de escala). */
+/** Barras verticais simples pra evolução mês a mês — sem lib de gráfico,
+ * consistente com o resto do dashboard (ver RankingList). Valor sempre visível
+ * na ponta de cada barra (rótulo direto em fluxo normal, não tooltip
+ * posicionado — % de margin resolve contra a largura do container, não a
+ * altura, então empurrar um tooltip com margin-bottom em % nunca fica no
+ * lugar certo). */
 export function MonthlyBarChart({
   dados,
   cor = "primary",
@@ -25,48 +25,27 @@ export function MonthlyBarChart({
   dados: MonthlyBarChartPonto[];
   cor?: "primary" | "success";
 }) {
-  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
-
   if (dados.length === 0) {
     return <p className="text-sm text-muted-foreground">Sem dados ainda.</p>;
   }
 
   const maior = Math.max(...dados.map((d) => d.valor), 0);
   const corBarra = cor === "success" ? "bg-success" : "bg-primary";
-  const corTexto = cor === "success" ? "text-success" : "text-primary";
-  const ultimoIdx = dados.length - 1;
 
   return (
-    <div className="flex items-end gap-2 sm:gap-3" style={{ height: 160 }}>
-      {dados.map((d, i) => {
-        const pct = maior > 0 ? Math.max((d.valor / maior) * 100, d.valor > 0 ? 4 : 1.5) : 1.5;
-        const destaque = hoverIdx === i || (hoverIdx === null && i === ultimoIdx);
-        return (
-          <div
-            key={d.periodo}
-            className="relative flex flex-1 flex-col items-center justify-end gap-1.5"
-            style={{ height: "100%" }}
-            onMouseEnter={() => setHoverIdx(i)}
-            onMouseLeave={() => setHoverIdx(null)}
-          >
-            {destaque && (
-              <div
-                className={`pointer-events-none absolute bottom-full mb-1 whitespace-nowrap rounded-md border border-border bg-popover px-2 py-1 text-xs font-medium shadow-md ${corTexto}`}
-                style={{ marginBottom: `calc(${pct}% + 4px)` }}
-              >
-                {fmtMoney(d.valor)}
-              </div>
-            )}
-            <div
-              className={`w-full max-w-10 rounded-t-md transition-opacity ${corBarra} ${
-                hoverIdx !== null && !destaque ? "opacity-40" : "opacity-100"
-              }`}
-              style={{ height: `${pct}%`, minHeight: 3 }}
-            />
-            <span className="text-[11px] capitalize text-muted-foreground">{labelPeriodo(d.periodo)}</span>
-          </div>
-        );
-      })}
+    <div className="overflow-x-auto">
+      <div className="flex min-w-fit items-end gap-3 sm:gap-4" style={{ height: 180 }}>
+        {dados.map((d) => {
+          const pct = maior > 0 ? Math.max((d.valor / maior) * 100, d.valor > 0 ? 4 : 1.5) : 1.5;
+          return (
+            <div key={d.periodo} className="flex h-full w-14 shrink-0 flex-col items-center justify-end gap-1.5">
+              <span className="whitespace-nowrap text-[11px] font-semibold">{fmtMoney(d.valor)}</span>
+              <div className={`w-full max-w-10 rounded-t-md ${corBarra}`} style={{ height: `${pct}%`, minHeight: 3 }} />
+              <span className="text-[11px] capitalize text-muted-foreground">{labelPeriodo(d.periodo)}</span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
