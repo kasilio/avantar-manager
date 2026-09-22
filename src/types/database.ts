@@ -21,7 +21,9 @@ export type Usuario = {
   nome: string;
   email: string;
   papel: Papel;
+  tipo_doc: TipoDoc;
   cpf: string | null;
+  cnpj: string | null;
   susep: string | null;
   whatsapp: string | null;
   pix: string | null;

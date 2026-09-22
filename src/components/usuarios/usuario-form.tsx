@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { maskCPF, maskPhone } from "@/lib/masks";
+import { maskCNPJ, maskCPF, maskPhone } from "@/lib/masks";
 import type { Usuario } from "@/types/database";
 
 export function UsuarioForm({
@@ -23,6 +24,7 @@ export function UsuarioForm({
   action: (formData: FormData) => void;
 }) {
   const isEdit = Boolean(usuario);
+  const [tipoDoc, setTipoDoc] = useState<"cnpj" | "cpf">(usuario?.tipo_doc ?? "cpf");
 
   return (
     <form action={action} className="flex flex-col gap-4">
@@ -70,16 +72,56 @@ export function UsuarioForm({
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="cpf">CPF</Label>
-          <Input
-            id="cpf"
-            name="cpf"
-            defaultValue={usuario?.cpf ?? ""}
-            onChange={(e) => (e.target.value = maskCPF(e.target.value))}
-          />
+      <div className="flex flex-col gap-2">
+        <Label>Tipo de documento</Label>
+        <div className="flex gap-4">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="radio"
+              name="tipo_doc"
+              value="cpf"
+              checked={tipoDoc === "cpf"}
+              onChange={() => setTipoDoc("cpf")}
+            />
+            Pessoa física (CPF)
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="radio"
+              name="tipo_doc"
+              value="cnpj"
+              checked={tipoDoc === "cnpj"}
+              onChange={() => setTipoDoc("cnpj")}
+            />
+            Pessoa jurídica (CNPJ)
+          </label>
         </div>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        {tipoDoc === "cpf" ? (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="cpf">CPF</Label>
+            <Input
+              id="cpf"
+              name="cpf"
+              defaultValue={usuario?.cpf ?? ""}
+              onChange={(e) => (e.target.value = maskCPF(e.target.value))}
+              placeholder="000.000.000-00"
+            />
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="cnpj">CNPJ</Label>
+            <Input
+              id="cnpj"
+              name="cnpj"
+              defaultValue={usuario?.cnpj ?? ""}
+              onChange={(e) => (e.target.value = maskCNPJ(e.target.value))}
+              placeholder="00.000.000/0001-00"
+            />
+          </div>
+        )}
         <div className="flex flex-col gap-2">
           <Label htmlFor="whatsapp">WhatsApp</Label>
           <Input

@@ -47,6 +47,10 @@ supabase/.temp
 /Repasses/
 /HISTORICO DE REPASSES.pdf
 
+# pasta de trabalho da automação de contador (notas fiscais reais, DAS,
+# certificado digital e senha) — nunca pode ir pro histórico do Git
+/Contador/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
