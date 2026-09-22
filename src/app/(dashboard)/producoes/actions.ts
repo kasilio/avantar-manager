@@ -13,13 +13,8 @@ function parseProducaoFormData(formData: FormData) {
     seguradora_id: formData.get("seguradora_id"),
     num_apolice: formData.get("num_apolice"),
     num_proposta: formData.get("num_proposta"),
-    premio_mensal: formData.get("premio_mensal"),
-    premio_total: formData.get("premio_total"),
-    comissao_bruta_pct: formData.get("comissao_bruta_pct"),
-    parcelas: formData.get("parcelas"),
     vigencia_inicio: formData.get("vigencia_inicio"),
     vigencia_fim: formData.get("vigencia_fim"),
-    data_renovacao: formData.get("data_renovacao"),
     status_manual: formData.get("status_manual") || "ativa",
     vendedor_id: formData.get("vendedor_id"),
     comissao_pct: formData.get("comissao_pct"),
@@ -35,7 +30,6 @@ function parseProducaoFormData(formData: FormData) {
     ...data,
     vigencia_inicio: data.vigencia_inicio || null,
     vigencia_fim: data.vigencia_fim || null,
-    data_renovacao: data.data_renovacao || null,
   };
 }
 
@@ -44,9 +38,19 @@ export async function createProducao(formData: FormData) {
   const producao = parseProducaoFormData(formData);
   const supabase = await createClient();
 
+  // premio_mensal/premio_total/comissao_bruta_pct/parcelas/data_renovacao não
+  // são editáveis por aqui — vêm da importação de repasse — mas o insert
+  // exige as colunas presentes, então entram como null.
   const { data: created, error } = await supabase
     .from("producoes")
-    .insert(producao)
+    .insert({
+      ...producao,
+      premio_mensal: null,
+      premio_total: null,
+      comissao_bruta_pct: null,
+      parcelas: null,
+      data_renovacao: null,
+    })
     .select("id")
     .single();
   if (error) throw new Error(error.message);

@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,7 +11,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { MoneyInput } from "@/components/shared/money-input";
 import type { Cliente, Producao, Seguradora, TipoProduto, Usuario } from "@/types/database";
 
 export function ProducaoForm({
@@ -35,8 +33,6 @@ export function ProducaoForm({
   /** Vendedor só enxerga (RLS bloqueia escrita em produções) — trava o form pra não parecer editável. */
   readOnly?: boolean;
 }) {
-  const [comissaoBruta, setComissaoBruta] = useState(producao?.comissao_bruta_pct ?? 0);
-
   return (
     <form action={action} className="flex flex-col gap-6">
     <fieldset disabled={readOnly} className="contents">
@@ -116,42 +112,7 @@ export function ProducaoForm({
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="premio_mensal">Prêmio mensal</Label>
-          <MoneyInput id="premio_mensal" name="premio_mensal" defaultValue={producao?.premio_mensal} />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="premio_total">Prêmio total</Label>
-          <MoneyInput id="premio_total" name="premio_total" defaultValue={producao?.premio_total} />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="parcelas">Parcelas</Label>
-          <Input id="parcelas" name="parcelas" defaultValue={producao?.parcelas ?? ""} placeholder="12x" />
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
-        <div className="flex flex-col gap-2 sm:w-64">
-          <Label htmlFor="comissao_bruta_pct">Comissão bruta (%)</Label>
-          <Input
-            id="comissao_bruta_pct"
-            name="comissao_bruta_pct"
-            type="number"
-            step="0.001"
-            min="0"
-            max="100"
-            defaultValue={producao?.comissao_bruta_pct ?? ""}
-            onChange={(e) => setComissaoBruta(Number(e.target.value) || 0)}
-          />
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Split automático: Avantar {(comissaoBruta * 0.35).toLocaleString("pt-BR", { maximumFractionDigits: 3 })}% ·
-          Unidade {(comissaoBruta * 0.65).toLocaleString("pt-BR", { maximumFractionDigits: 3 })}%
-        </p>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-2">
           <Label htmlFor="vigencia_inicio">Vigência início</Label>
           <Input id="vigencia_inicio" name="vigencia_inicio" type="date" defaultValue={producao?.vigencia_inicio ?? ""} />
@@ -159,10 +120,6 @@ export function ProducaoForm({
         <div className="flex flex-col gap-2">
           <Label htmlFor="vigencia_fim">Vigência fim</Label>
           <Input id="vigencia_fim" name="vigencia_fim" type="date" defaultValue={producao?.vigencia_fim ?? ""} />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="data_renovacao">Data renovação</Label>
-          <Input id="data_renovacao" name="data_renovacao" type="date" defaultValue={producao?.data_renovacao ?? ""} />
         </div>
       </div>
 
