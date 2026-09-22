@@ -7,6 +7,13 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/auth/get-current-usuario";
 import { usuarioCreateSchema, usuarioUpdateSchema } from "@/lib/validations/usuario";
 
+// Campos opcionais do schema (`.optional()`, que só aceita `undefined`, não
+// `null`) — mas cpf/cnpj só existem no DOM condicionalmente (toggle
+// pessoa física/jurídica no UsuarioForm), então `formData.get()` retorna
+// `null` pra quem não está renderizado. Normaliza `null` -> `undefined`
+// aqui em vez de deixar passar pro zod (mesmo padrão de clientes/actions.ts).
+const str = (formData: FormData, key: string) => formData.get(key) ?? undefined;
+
 /**
  * Cria o login do usuário (via Admin API — só ela pode criar contas no
  * Supabase Auth) e o registro correspondente em `usuarios`. Diferente do
@@ -23,12 +30,12 @@ export async function createUsuario(formData: FormData) {
     senha_inicial: formData.get("senha_inicial"),
     papel: formData.get("papel"),
     tipo_doc: formData.get("tipo_doc"),
-    cpf: formData.get("cpf"),
-    cnpj: formData.get("cnpj"),
-    susep: formData.get("susep"),
-    whatsapp: formData.get("whatsapp"),
-    pix: formData.get("pix"),
-    obs: formData.get("obs"),
+    cpf: str(formData, "cpf"),
+    cnpj: str(formData, "cnpj"),
+    susep: str(formData, "susep"),
+    whatsapp: str(formData, "whatsapp"),
+    pix: str(formData, "pix"),
+    obs: str(formData, "obs"),
   });
   if (!parsed.success) {
     throw new Error(parsed.error.issues.map((issue) => issue.message).join(", "));
@@ -64,12 +71,12 @@ export async function updateUsuario(id: string, formData: FormData) {
     email: formData.get("email"),
     papel: formData.get("papel"),
     tipo_doc: formData.get("tipo_doc"),
-    cpf: formData.get("cpf"),
-    cnpj: formData.get("cnpj"),
-    susep: formData.get("susep"),
-    whatsapp: formData.get("whatsapp"),
-    pix: formData.get("pix"),
-    obs: formData.get("obs"),
+    cpf: str(formData, "cpf"),
+    cnpj: str(formData, "cnpj"),
+    susep: str(formData, "susep"),
+    whatsapp: str(formData, "whatsapp"),
+    pix: str(formData, "pix"),
+    obs: str(formData, "obs"),
     ativo: formData.get("ativo") === "on",
   });
   if (!parsed.success) {
