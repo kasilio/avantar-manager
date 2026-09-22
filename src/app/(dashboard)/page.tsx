@@ -123,10 +123,10 @@ export default async function DashboardPage({
   const aliquota = Number(settingsRow?.aliquota_simples ?? 6);
   const simples = comissaoBruta * (aliquota / 100);
 
-  // Evolução mês a mês (últimos 6 meses, incluindo o atual) — faturamento
+  // Evolução mês a mês (últimos 12 meses, incluindo o atual) — faturamento
   // bruto pro admin, comissão já ponderada pela % de cada produção pro
   // vendedor (RLS já limita `repasses` à carteira dele).
-  const mesesEvolucao = Array.from({ length: 6 }, (_, i) => shiftPeriodo(atual, i - 5));
+  const mesesEvolucao = Array.from({ length: 12 }, (_, i) => shiftPeriodo(atual, i - 11));
   const { data: repassesEvolucaoRaw } = await supabase
     .from("repasses")
     .select("periodo, comissao_bruta, producoes(comissao_pct), repasses_lotes(status)")
@@ -346,40 +346,42 @@ export default async function DashboardPage({
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <TrendingUp className="size-4 text-primary" />
-            {isAdmin ? "Faturamento mês a mês" : "Sua comissão mês a mês"}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <MonthlyBarChart dados={isAdmin ? evolucaoFaturamento : evolucaoComissao} cor={isAdmin ? "primary" : "success"} />
-        </CardContent>
-      </Card>
-
-      {isAdmin && (
+      <div className={isAdmin ? "grid gap-4 md:grid-cols-2" : undefined}>
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
+          <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Target className="size-4 text-primary" /> Meta de {mesLabel(atual)}
+              <TrendingUp className="size-4 text-primary" />
+              {isAdmin ? "Faturamento mês a mês" : "Sua comissão mês a mês"}
             </CardTitle>
-            <MetaDialogForm periodo={atual} valorAtual={metaValor} />
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div>
-                <div className="text-xs text-muted-foreground">Meta</div>
-                <div className="text-lg font-bold">{fmtMoney(metaValor)}</div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground">Faturado até hoje</div>
-                <div className="text-lg font-bold text-success">{fmtMoney(faturadoAcumulado[faturadoAcumulado.length - 1] ?? 0)}</div>
-              </div>
-            </div>
+            <MonthlyBarChart dados={isAdmin ? evolucaoFaturamento : evolucaoComissao} cor={isAdmin ? "primary" : "success"} />
           </CardContent>
         </Card>
-      )}
+
+        {isAdmin && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Target className="size-4 text-primary" /> Meta de {mesLabel(atual)}
+              </CardTitle>
+              <MetaDialogForm periodo={atual} valorAtual={metaValor} />
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <div className="text-xs text-muted-foreground">Meta</div>
+                  <div className="text-lg font-bold">{fmtMoney(metaValor)}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Faturado até hoje</div>
+                  <div className="text-lg font-bold text-success">{fmtMoney(faturadoAcumulado[faturadoAcumulado.length - 1] ?? 0)}</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
