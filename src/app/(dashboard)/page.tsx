@@ -13,6 +13,18 @@ import { fmtMoney, fmtDate, periodoAtual, shiftPeriodo, mesLabel, diasNoMes, dia
 import { todasTarefas } from "@/lib/tarefas";
 import type { ProducaoRow } from "@/components/producoes/producao-table";
 
+type RepasseAgregado = {
+  periodo: string;
+  comissao_bruta: number | null;
+  producoes: {
+    comissao_pct: number | null;
+    clientes: { nome: string } | null;
+    tipos_produto: { nome: string } | null;
+    seguradoras: { nome: string } | null;
+  } | null;
+  repasses_lotes: { status: string } | null;
+};
+
 export default async function DashboardPage({
   searchParams,
 }: {
@@ -44,40 +56,55 @@ export default async function DashboardPage({
     }
   }
 
-  // RLS já restringe o que vem de volta (vendedor só vê as próprias
-  // produções — ver supabase/migrations/0001_core.sql), sem precisar
+  const mesesEvolucao = Array.from({ length: 12 }, (_, i) => shiftPeriodo(atual, i - 11));
+
+  // Tudo que não depende de nenhum outro resultado busca de uma vez, em
+  // paralelo — antes eram ~7 idas e vindas sequenciais ao Supabase (e
+  // 4 delas liam a tabela `repasses` inteira separadamente, de formas
+  // diferentes). Agora é uma rodada só; as agregações (previsão de
+  // transporte, total do período, evolução mensal, rankings do admin) são
+  // todas derivadas em memória do mesmo `repassesRaw`, com os mesmos
+  // filtros de antes — mesmo resultado, só que sem repetir a consulta.
+  // RLS já restringe o que vem de volta (vendedor só vê a própria
+  // carteira — ver supabase/migrations/0001_core.sql), sem precisar
   // filtrar de novo aqui.
-  // A contagem de clientes ativos roda pros dois papéis — RLS já limita o
-  // vendedor à própria carteira, então o número sai certo sem filtrar de novo.
-  const [{ data: producoesRaw }, { count: clientesAtivos }, tarefas] = await Promise.all([
-    supabase.from("producoes").select("*, clientes(nome)"),
+  const [
+    { data: producoesAtivasRaw },
+    { count: clientesAtivos },
+    tarefas,
+    { data: repassesRaw },
+    { data: settingsRow },
+    { count: prospeccoesAbertasCount },
+    { data: lotesTodosRaw },
+    { data: metaRow },
+  ] = await Promise.all([
+    supabase.from("producoes").select("*, clientes(nome)").eq("status_manual", "ativa"),
     supabase.from("clientes").select("*", { count: "exact", head: true }).eq("status", "ativo"),
     todasTarefas(supabase, { horizonteDias: 400 }),
+    supabase
+      .from("repasses")
+      .select("periodo, comissao_bruta, producoes(comissao_pct, clientes(nome), tipos_produto(nome), seguradoras(nome)), repasses_lotes(status)"),
+    supabase.from("settings").select("*").eq("id", true).single(),
+    supabase.from("prospeccoes").select("*", { count: "exact", head: true }).neq("coluna_id", "fechado").neq("coluna_id", "perdido"),
+    isAdmin ? supabase.from("repasses_lotes").select("*") : Promise.resolve({ data: null }),
+    isAdmin ? supabase.from("metas_mensais").select("*").eq("periodo", atual).maybeSingle() : Promise.resolve({ data: null }),
   ]);
-  const producoes = (producoesRaw ?? []) as unknown as ProducaoRow[];
 
-  const producoesAtivas = producoes.filter((p) => p.status_manual === "ativa");
+  const producoesAtivas = (producoesAtivasRaw ?? []) as unknown as ProducaoRow[];
+  const allRows = (repassesRaw ?? []) as unknown as RepasseAgregado[];
+  const prospeccoesAbertas = prospeccoesAbertasCount ?? 0;
 
   // Previsão de faturamento do ramo Transporte: comissão é recorrente mês a
   // mês por apólice, então a projeção pro próximo mês é a média de TODOS os
   // meses fechados que já tiveram comissão de transporte recebida (não um
   // número fixo de meses — carteiras novas ou com meses sem repasse não
   // podem puxar a média pra baixo dividindo por meses vazios).
-  const { data: repassesTransporte } = await supabase
-    .from("repasses")
-    .select("*, producoes(tipo_produto_id, comissao_pct, tipos_produto(nome)), repasses_lotes(status)")
-    .lt("periodo", atual);
-  const transporteRows = (repassesTransporte ?? []) as unknown as Array<{
-    periodo: string;
-    comissao_bruta: number | null;
-    producoes: { comissao_pct: number | null; tipos_produto: { nome: string } | null } | null;
-    repasses_lotes: { status: string } | null;
-  }>;
   const transportePorPeriodo = new Map<string, number>();
   // Sua comissão (não faz sentido pra admin, que soma vários vendedores) —
   // mesmo período, ponderado pelo comissao_pct de cada produção.
   const transporteVendedorPorPeriodo = new Map<string, number>();
-  for (const r of transporteRows) {
+  for (const r of allRows) {
+    if (r.periodo >= atual) continue; // equivalente ao antigo .lt("periodo", atual)
     if (!r.producoes?.tipos_produto?.nome?.toUpperCase().includes("TRANSPORTE")) continue;
     if (r.repasses_lotes?.status !== "pago") continue; // repasse só conta como recebido de fato quando o lote foi pago
     const recebido = Number(r.comissao_bruta ?? 0);
@@ -102,45 +129,23 @@ export default async function DashboardPage({
     comissaoBruta = previsaoTransporte;
     suaComissao = previsaoSuaComissao;
   } else {
-    const { data: repassesMes } = await supabase
-      .from("repasses")
-      .select("*, producoes(comissao_pct), repasses_lotes(status)")
-      .eq("periodo", periodo);
-    const rowsMes = (repassesMes ?? []) as unknown as Array<{
-      comissao_bruta: number | null;
-      producoes: { comissao_pct: number | null } | null;
-      repasses_lotes: { status: string } | null;
-    }>;
-    for (const r of rowsMes) {
-      if (r.repasses_lotes?.status !== "pago") continue;
+    for (const r of allRows) {
+      if (r.periodo !== periodo || r.repasses_lotes?.status !== "pago") continue;
       const bruto = Number(r.comissao_bruta ?? 0);
       comissaoBruta += bruto;
       suaComissao += bruto * (Number(r.producoes?.comissao_pct ?? 0) / 100);
     }
   }
 
-  const { data: settingsRow } = await supabase.from("settings").select("*").eq("id", true).single();
   const aliquota = Number(settingsRow?.aliquota_simples ?? 6);
   const simples = comissaoBruta * (aliquota / 100);
 
   // Evolução mês a mês (últimos 12 meses, incluindo o atual) — faturamento
   // bruto pro admin, comissão já ponderada pela % de cada produção pro
-  // vendedor (RLS já limita `repasses` à carteira dele).
-  const mesesEvolucao = Array.from({ length: 12 }, (_, i) => shiftPeriodo(atual, i - 11));
-  const { data: repassesEvolucaoRaw } = await supabase
-    .from("repasses")
-    .select("periodo, comissao_bruta, producoes(comissao_pct), repasses_lotes(status)")
-    .gte("periodo", mesesEvolucao[0])
-    .lte("periodo", atual);
-  const evolucaoRows = (repassesEvolucaoRaw ?? []) as unknown as Array<{
-    periodo: string;
-    comissao_bruta: number | null;
-    producoes: { comissao_pct: number | null } | null;
-    repasses_lotes: { status: string } | null;
-  }>;
+  // vendedor.
   const faturamentoPorMes = new Map(mesesEvolucao.map((m) => [m, 0]));
   const comissaoPorMes = new Map(mesesEvolucao.map((m) => [m, 0]));
-  for (const r of evolucaoRows) {
+  for (const r of allRows) {
     if (r.repasses_lotes?.status !== "pago" || !faturamentoPorMes.has(r.periodo)) continue;
     const bruto = Number(r.comissao_bruta ?? 0);
     faturamentoPorMes.set(r.periodo, (faturamentoPorMes.get(r.periodo) ?? 0) + bruto);
@@ -161,13 +166,6 @@ export default async function DashboardPage({
   const tarefasHoje = tarefas.filter((t) => !t.concluida && t.data === hojeStr);
   const tarefasAmanha = tarefas.filter((t) => !t.concluida && t.data === amanhaStr);
 
-  const { count: prospeccoesAbertasCount } = await supabase
-    .from("prospeccoes")
-    .select("*", { count: "exact", head: true })
-    .neq("coluna_id", "fechado")
-    .neq("coluna_id", "perdido");
-  const prospeccoesAbertas = prospeccoesAbertasCount ?? 0;
-
   // Painel "de CEO": só pra admin (vendedor não precisa ver a carteira toda).
   let topProdutos: { label: string; valor: number }[] = [];
   let topClientes: { label: string; valor: number }[] = [];
@@ -178,23 +176,10 @@ export default async function DashboardPage({
   let faturadoAcumulado: number[] = [];
 
   if (isAdmin) {
-    const [{ data: repassesTodos }, { data: lotesTodosRaw }, { data: metaRow }] = await Promise.all([
-      supabase
-        .from("repasses")
-        .select("*, producoes(cliente_id, tipo_produto_id, clientes(nome), tipos_produto(nome), seguradoras(nome)), repasses_lotes(status)"),
-      supabase.from("repasses_lotes").select("*"),
-      supabase.from("metas_mensais").select("*").eq("periodo", atual).maybeSingle(),
-    ]);
-
-    const repassesRows = (repassesTodos ?? []) as unknown as Array<{
-      comissao_bruta: number | null;
-      producoes: { clientes: { nome: string } | null; tipos_produto: { nome: string } | null; seguradoras: { nome: string } | null } | null;
-      repasses_lotes: { status: string } | null;
-    }>;
     const porProduto = new Map<string, number>();
     const porCliente = new Map<string, number>();
     const porSeguradora = new Map<string, number>();
-    for (const r of repassesRows) {
+    for (const r of allRows) {
       if (r.repasses_lotes?.status !== "pago") continue;
       const valor = Number(r.comissao_bruta ?? 0);
       const nomeProduto = r.producoes?.tipos_produto?.nome ?? "Outro";

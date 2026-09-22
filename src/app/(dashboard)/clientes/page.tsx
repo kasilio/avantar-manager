@@ -14,8 +14,14 @@ export default async function ClientesPage({
   const { sort, dir, status } = await searchParams;
   const statusFiltro = status === "ativo" || status === "inativo" || status === "prospect" ? (status as StatusCliente) : undefined;
   const supabase = await createClient();
+  // Filtro de status já sai aplicado na consulta (em vez de buscar todo
+  // mundo e filtrar em memória) — mesmo resultado, menos linhas trafegadas
+  // quando o filtro tá ativo.
+  const clientesQuery = statusFiltro
+    ? supabase.from("clientes").select("*").eq("status", statusFiltro)
+    : supabase.from("clientes").select("*");
   const [{ data: clientes }, { data: producoesRaw }, { data: repassesRaw }] = await Promise.all([
-    supabase.from("clientes").select("*"),
+    clientesQuery,
     supabase.from("producoes").select("id, cliente_id, status_manual, vigencia_inicio, vigencia_fim"),
     supabase.from("repasses").select("producao_id, comissao_bruta, repasses_lotes(status)"),
   ]);
@@ -51,14 +57,12 @@ export default async function ClientesPage({
     vigenciaPorCliente.set(p.cliente_id, atual);
   }
 
-  let resumos: ClienteResumo[] = (clientes ?? []).map((c) => ({
+  const resumos: ClienteResumo[] = (clientes ?? []).map((c) => ({
     ...c,
     faturamento: faturamentoPorCliente.get(c.id) ?? 0,
     vigenciaInicio: vigenciaPorCliente.get(c.id)?.inicio ?? null,
     vigenciaFim: vigenciaPorCliente.get(c.id)?.fim ?? null,
   }));
-
-  if (statusFiltro) resumos = resumos.filter((c) => c.status === statusFiltro);
 
   const sortCol = sort === "faturamento" ? "faturamento" : "nome";
   const sortDir = dir === "desc" ? "desc" : "asc";
