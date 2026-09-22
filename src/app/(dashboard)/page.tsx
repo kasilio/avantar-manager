@@ -46,11 +46,11 @@ export default async function DashboardPage({
   // RLS já restringe o que vem de volta (vendedor só vê as próprias
   // produções — ver supabase/migrations/0001_core.sql), sem precisar
   // filtrar de novo aqui.
+  // A contagem de clientes ativos roda pros dois papéis — RLS já limita o
+  // vendedor à própria carteira, então o número sai certo sem filtrar de novo.
   const [{ data: producoesRaw }, { count: clientesAtivos }, tarefas] = await Promise.all([
     supabase.from("producoes").select("*, clientes(nome)"),
-    isAdmin
-      ? supabase.from("clientes").select("*", { count: "exact", head: true }).eq("status", "ativo")
-      : Promise.resolve({ count: null as number | null }),
+    supabase.from("clientes").select("*", { count: "exact", head: true }).eq("status", "ativo"),
     todasTarefas(supabase, { horizonteDias: 400 }),
   ]);
   const producoes = (producoesRaw ?? []) as unknown as ProducaoRow[];
@@ -64,51 +64,63 @@ export default async function DashboardPage({
   // podem puxar a média pra baixo dividindo por meses vazios).
   const { data: repassesTransporte } = await supabase
     .from("repasses")
-    .select("*, producoes(tipo_produto_id, tipos_produto(nome)), repasses_lotes(status)")
+    .select("*, producoes(tipo_produto_id, comissao_pct, tipos_produto(nome)), repasses_lotes(status)")
     .lt("periodo", atual);
   const transporteRows = (repassesTransporte ?? []) as unknown as Array<{
     periodo: string;
     comissao_bruta: number | null;
-    producoes: { tipos_produto: { nome: string } | null } | null;
+    producoes: { comissao_pct: number | null; tipos_produto: { nome: string } | null } | null;
     repasses_lotes: { status: string } | null;
   }>;
   const transportePorPeriodo = new Map<string, number>();
+  // Sua comissão (não faz sentido pra admin, que soma vários vendedores) —
+  // mesmo período, ponderado pelo comissao_pct de cada produção.
+  const transporteVendedorPorPeriodo = new Map<string, number>();
   for (const r of transporteRows) {
     if (!r.producoes?.tipos_produto?.nome?.toUpperCase().includes("TRANSPORTE")) continue;
     if (r.repasses_lotes?.status !== "pago") continue; // repasse só conta como recebido de fato quando o lote foi pago
     const recebido = Number(r.comissao_bruta ?? 0);
     transportePorPeriodo.set(r.periodo, (transportePorPeriodo.get(r.periodo) ?? 0) + recebido);
+    const pct = Number(r.producoes?.comissao_pct ?? 0) / 100;
+    transporteVendedorPorPeriodo.set(r.periodo, (transporteVendedorPorPeriodo.get(r.periodo) ?? 0) + recebido * pct);
   }
-  const mesesTransporteComComissao = [...transportePorPeriodo.values()].filter((v) => v > 0);
+  const mesesTransporteComComissao = [...transportePorPeriodo.keys()].filter((k) => (transportePorPeriodo.get(k) ?? 0) > 0);
   const previsaoTransporte = mesesTransporteComComissao.length > 0
-    ? mesesTransporteComComissao.reduce((a, b) => a + b, 0) / mesesTransporteComComissao.length
+    ? mesesTransporteComComissao.reduce((a, k) => a + (transportePorPeriodo.get(k) ?? 0), 0) / mesesTransporteComComissao.length
+    : 0;
+  const previsaoSuaComissao = mesesTransporteComComissao.length > 0
+    ? mesesTransporteComComissao.reduce((a, k) => a + (transporteVendedorPorPeriodo.get(k) ?? 0), 0) / mesesTransporteComComissao.length
     : 0;
 
   let comissaoBruta = 0;
+  let suaComissao = 0;
   let previsao = false;
 
   if (isFuturo) {
     previsao = true;
     comissaoBruta = previsaoTransporte;
+    suaComissao = previsaoSuaComissao;
   } else {
     const { data: repassesMes } = await supabase
       .from("repasses")
-      .select("*, repasses_lotes(status)")
+      .select("*, producoes(comissao_pct), repasses_lotes(status)")
       .eq("periodo", periodo);
     const rowsMes = (repassesMes ?? []) as unknown as Array<{
       comissao_bruta: number | null;
+      producoes: { comissao_pct: number | null } | null;
       repasses_lotes: { status: string } | null;
     }>;
-    comissaoBruta = rowsMes.reduce(
-      (sum, r) => sum + (r.repasses_lotes?.status === "pago" ? Number(r.comissao_bruta ?? 0) : 0),
-      0,
-    );
+    for (const r of rowsMes) {
+      if (r.repasses_lotes?.status !== "pago") continue;
+      const bruto = Number(r.comissao_bruta ?? 0);
+      comissaoBruta += bruto;
+      suaComissao += bruto * (Number(r.producoes?.comissao_pct ?? 0) / 100);
+    }
   }
 
   const { data: settingsRow } = await supabase.from("settings").select("*").eq("id", true).single();
   const aliquota = Number(settingsRow?.aliquota_simples ?? 6);
   const simples = comissaoBruta * (aliquota / 100);
-  const resultado = comissaoBruta - simples;
 
   const hoje = new Date();
   const hojeStr = hoje.toISOString().slice(0, 10);
@@ -245,23 +257,45 @@ export default async function DashboardPage({
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-xs font-medium text-muted-foreground">
-              {previsao ? "Comissão prevista" : "Comissão recebida"}
+              {isAdmin
+                ? previsao ? "Comissão prevista" : "Comissão recebida"
+                : previsao ? "Faturado previsto (carteira)" : "Faturado (carteira)"}
             </CardTitle>
             <Wallet className="size-4 text-primary" />
           </CardHeader>
           <CardContent>
             <div className="text-xl font-bold">{fmtMoney(comissaoBruta)}</div>
+            {!isAdmin && (
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                Total recebido da sua carteira — antes da sua comissão.
+              </p>
+            )}
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">Simples Nacional</CardTitle>
-            <Wallet className="size-4 text-destructive" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-xl font-bold">{fmtMoney(simples)}</div>
-          </CardContent>
-        </Card>
+        {isAdmin ? (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-xs font-medium text-muted-foreground">Simples Nacional</CardTitle>
+              <Wallet className="size-4 text-destructive" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-xl font-bold">{fmtMoney(simples)}</div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="border-success/30 bg-success/5">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-xs font-medium text-muted-foreground">
+                {previsao ? "Sua comissão (prevista)" : "Sua comissão"}
+              </CardTitle>
+              <Wallet className="size-4 text-success" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-xl font-bold text-success">{fmtMoney(suaComissao)}</div>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">O que cai no seu bolso, já aplicando a sua % em cada produção.</p>
+            </CardContent>
+          </Card>
+        )}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-xs font-medium text-muted-foreground">Produções ativas</CardTitle>
@@ -274,12 +308,12 @@ export default async function DashboardPage({
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-xs font-medium text-muted-foreground">
-              {isAdmin ? "Clientes ativos" : "Resultado estimado"}
+              {isAdmin ? "Clientes ativos" : "Meus clientes ativos"}
             </CardTitle>
-            {isAdmin ? <Building2 className="size-4 text-primary" /> : <Wallet className="size-4 text-success" />}
+            <Building2 className="size-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-xl font-bold">{isAdmin ? clientesAtivos ?? 0 : fmtMoney(resultado)}</div>
+            <div className="text-xl font-bold">{clientesAtivos ?? 0}</div>
           </CardContent>
         </Card>
       </div>

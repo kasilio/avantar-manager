@@ -23,6 +23,7 @@ export function ProducaoForm({
   vendedores,
   clienteFixo,
   action,
+  readOnly,
 }: {
   producao?: Producao;
   clientes: Cliente[];
@@ -31,11 +32,14 @@ export function ProducaoForm({
   vendedores: Usuario[];
   clienteFixo?: string;
   action: (formData: FormData) => void;
+  /** Vendedor só enxerga (RLS bloqueia escrita em produções) — trava o form pra não parecer editável. */
+  readOnly?: boolean;
 }) {
   const [comissaoBruta, setComissaoBruta] = useState(producao?.comissao_bruta_pct ?? 0);
 
   return (
     <form action={action} className="flex flex-col gap-6">
+    <fieldset disabled={readOnly} className="contents">
       {clienteFixo ? (
         <input type="hidden" name="cliente_id" value={clienteFixo} />
       ) : (
@@ -210,10 +214,13 @@ export function ProducaoForm({
         <Label htmlFor="obs">Observações</Label>
         <Textarea id="obs" name="obs" defaultValue={producao?.obs ?? ""} rows={3} />
       </div>
+    </fieldset>
 
-      <Button type="submit" className="self-start">
-        {producao ? "Salvar alterações" : "Cadastrar produção"}
-      </Button>
+      {!readOnly && (
+        <Button type="submit" className="self-start">
+          {producao ? "Salvar alterações" : "Cadastrar produção"}
+        </Button>
+      )}
     </form>
   );
 }

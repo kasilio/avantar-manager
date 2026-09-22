@@ -6,7 +6,8 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ClienteForm } from "@/components/clientes/cliente-form";
 import { createClient } from "@/lib/supabase/server";
-import { fmtMoney } from "@/lib/format";
+import { requireCurrentUsuario } from "@/lib/auth/get-current-usuario";
+import { fmtMoney, fmtPct } from "@/lib/format";
 import type { Producao, Seguradora, TipoProduto } from "@/types/database";
 import { deleteCliente, updateCliente } from "../actions";
 
@@ -21,6 +22,8 @@ export default async function ClienteDetalhePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const usuario = await requireCurrentUsuario();
+  const isAdmin = usuario.papel === "admin";
   const supabase = await createClient();
 
   const [{ data: cliente }, { data: contatos }, { data: producoesRaw }] = await Promise.all([
@@ -56,6 +59,11 @@ export default async function ClienteDetalhePage({
     (sum, r) => sum + (r.repasses_lotes?.status === "pago" ? Number(r.comissao_bruta ?? 0) : 0),
     0,
   );
+  const totalComissao = repasses.reduce((sum, r) => {
+    if (r.repasses_lotes?.status !== "pago") return sum;
+    const pct = Number(producaoPorId.get(r.producao_id)?.comissao_pct ?? 0) / 100;
+    return sum + Number(r.comissao_bruta ?? 0) * pct;
+  }, 0);
 
   const updateClienteWithId = updateCliente.bind(null, id);
   const deleteClienteWithId = deleteCliente.bind(null, id);
@@ -91,6 +99,11 @@ export default async function ClienteDetalhePage({
                 <div>
                   <div className="font-medium">{p.tipos_produto?.nome ?? "Produto"} · {p.seguradoras?.nome ?? "Seguradora"}</div>
                   <div className="text-xs text-muted-foreground">Apólice {p.num_apolice || "—"}</div>
+                  {p.comissao_pct != null && (
+                    <div className="text-xs text-success">
+                      {isAdmin ? "Comissão do vendedor" : "Sua comissão"}: {fmtPct(p.comissao_pct)}
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-muted-foreground">
@@ -104,9 +117,14 @@ export default async function ClienteDetalhePage({
       </Card>
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
+        <CardHeader className="flex flex-wrap items-center justify-between gap-3 space-y-0">
           <CardTitle>Histórico de repasses</CardTitle>
-          <span className="text-sm font-medium text-success">Total recebido: {fmtMoney(totalRecebido)}</span>
+          <div className="flex flex-wrap items-center gap-3 text-sm font-medium">
+            <span className="text-muted-foreground">Faturado: {fmtMoney(totalRecebido)}</span>
+            <span className="text-success">
+              {isAdmin ? "Comissão vendedores" : "Sua comissão"}: {fmtMoney(totalComissao)}
+            </span>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           {repasses.length === 0 ? (
@@ -119,13 +137,17 @@ export default async function ClienteDetalhePage({
                     <TableHead>Período</TableHead>
                     <TableHead>Produção</TableHead>
                     <TableHead className="hidden md:table-cell">Parcela</TableHead>
-                    <TableHead>Valor</TableHead>
+                    <TableHead>Faturado</TableHead>
+                    <TableHead className="hidden md:table-cell">%</TableHead>
+                    <TableHead>{isAdmin ? "Comissão vendedor" : "Sua comissão"}</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {repasses.map((r) => {
                     const producao = producaoPorId.get(r.producao_id);
+                    const pct = producao?.comissao_pct ?? null;
+                    const valorComissao = Number(r.comissao_bruta ?? 0) * (Number(pct ?? 0) / 100);
                     return (
                       <TableRow key={r.id}>
                         <TableCell className="text-muted-foreground">{r.periodo}</TableCell>
@@ -137,6 +159,8 @@ export default async function ClienteDetalhePage({
                         </TableCell>
                         <TableCell className="hidden md:table-cell text-muted-foreground">{r.parcela || "—"}</TableCell>
                         <TableCell>{fmtMoney(r.comissao_bruta)}</TableCell>
+                        <TableCell className="hidden md:table-cell text-muted-foreground">{fmtPct(pct)}</TableCell>
+                        <TableCell className="font-medium text-success">{fmtMoney(valorComissao)}</TableCell>
                         <TableCell>
                           {r.repasses_lotes?.status === "pago" ? (
                             <StatusBadge status="pago" />

@@ -9,7 +9,8 @@ import { MoneyInput } from "@/components/shared/money-input";
 import { LoteStepper } from "@/components/repasses/lote-stepper";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { createClient } from "@/lib/supabase/server";
-import { fmtDate, fmtDateCurta, fmtMoney, today } from "@/lib/format";
+import { requireCurrentUsuario } from "@/lib/auth/get-current-usuario";
+import { fmtDate, fmtDateCurta, fmtMoney, fmtPct, today } from "@/lib/format";
 import type { RepasseLote } from "@/types/database";
 import { anexarNf, registrarPagamento } from "../actions";
 
@@ -19,13 +20,15 @@ export default async function RepasseLoteDetalhePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const usuario = await requireCurrentUsuario();
+  const isAdmin = usuario.papel === "admin";
   const supabase = await createClient();
 
   const [{ data: loteRaw }, { data: linhasRaw }] = await Promise.all([
     supabase.from("repasses_lotes").select("*").eq("id", id).single(),
     supabase
       .from("repasses")
-      .select("*, producoes(num_apolice, clientes(nome), tipos_produto(nome))")
+      .select("*, producoes(num_apolice, comissao_pct, clientes(nome), tipos_produto(nome))")
       .eq("lote_id", id)
       .order("periodo", { ascending: true }),
   ]);
@@ -37,8 +40,22 @@ export default async function RepasseLoteDetalhePage({
     parcela: string | null;
     periodo: string;
     comissao_bruta: number | null;
-    producoes: { num_apolice: string | null; clientes: { nome: string } | null; tipos_produto: { nome: string } | null } | null;
+    producoes: {
+      num_apolice: string | null;
+      comissao_pct: number | null;
+      clientes: { nome: string } | null;
+      tipos_produto: { nome: string } | null;
+    } | null;
   }>;
+
+  // Pra vendedor, RLS já filtra `linhas` só pras próprias produções — o
+  // total do lote (`lote.comissao_bruta_total`) é da empresa inteira, então
+  // pra ele mostramos a soma do que é dele mesmo, calculada aqui.
+  const meuFaturado = linhas.reduce((sum, l) => sum + Number(l.comissao_bruta ?? 0), 0);
+  const minhaComissao = linhas.reduce((sum, l) => {
+    const pct = Number(l.producoes?.comissao_pct ?? 0) / 100;
+    return sum + Number(l.comissao_bruta ?? 0) * pct;
+  }, 0);
 
   const anexarNfWithId = anexarNf.bind(null, id);
   const registrarPagamentoWithId = registrarPagamento.bind(null, id);
@@ -52,14 +69,23 @@ export default async function RepasseLoteDetalhePage({
           </h1>
         </div>
         <div className="flex items-center gap-2">
-          <span className="font-medium">{fmtMoney(lote.comissao_bruta_total)}</span>
+          <span className="font-medium">{fmtMoney(isAdmin ? lote.comissao_bruta_total : meuFaturado)}</span>
           <StatusBadge status={lote.status} />
         </div>
       </div>
 
+      {!isAdmin && (
+        <Card className="border-success/30 bg-success/5">
+          <CardContent className="flex flex-wrap items-center gap-6 py-4 text-sm">
+            <span>Faturado (sua carteira): <span className="font-medium">{fmtMoney(meuFaturado)}</span></span>
+            <span>Sua comissão: <span className="font-semibold text-success">{fmtMoney(minhaComissao)}</span></span>
+          </CardContent>
+        </Card>
+      )}
+
       <LoteStepper status={lote.status} criadoEm={lote.created_at} />
 
-      {lote.status !== "pago" && (
+      {isAdmin && lote.status !== "pago" && (
         <div className="grid gap-4 sm:grid-cols-2">
           {lote.status === "aguardando_nf" && (
             <Card>
@@ -118,10 +144,10 @@ export default async function RepasseLoteDetalhePage({
       {lote.status === "pago" && (
         <Card className="border-success/30 bg-success/5">
           <CardContent className="flex flex-wrap items-center gap-4 py-4 text-sm">
-            <span>NF: <span className="font-medium">{lote.nf_info || "—"}</span></span>
+            {isAdmin && <span>NF: <span className="font-medium">{lote.nf_info || "—"}</span></span>}
             <span>Pago em: <span className="font-medium">{fmtDate(lote.data_pagamento)}</span></span>
-            <span>Valor pago: <span className="font-medium">{fmtMoney(lote.valor_pago)}</span></span>
-            {lote.nf_arquivo_nome && (
+            {isAdmin && <span>Valor pago: <span className="font-medium">{fmtMoney(lote.valor_pago)}</span></span>}
+            {isAdmin && lote.nf_arquivo_nome && (
               <a href={`/repasses/${id}/nf`} className="text-primary hover:underline">
                 Baixar NF
               </a>
@@ -140,32 +166,44 @@ export default async function RepasseLoteDetalhePage({
               <TableHead className="hidden md:table-cell">Período</TableHead>
               <TableHead className="hidden md:table-cell">Parcela</TableHead>
               <TableHead>Comissão bruta</TableHead>
+              <TableHead className="hidden md:table-cell">%</TableHead>
+              <TableHead>{isAdmin ? "Comissão vendedor" : "Sua comissão"}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {linhas.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
+                <TableCell colSpan={7} className="text-center text-sm text-muted-foreground">
                   Nenhuma linha neste lote.
                 </TableCell>
               </TableRow>
             )}
-            {linhas.map((l) => (
-              <TableRow key={l.id}>
-                <TableCell>
-                  <Link href={`/repasses/${id}/linhas/${l.id}`} className="font-medium hover:text-primary">
-                    {l.producoes?.clientes?.nome ?? "—"}
-                  </Link>
-                  <div className="text-xs text-muted-foreground">Apólice {l.producoes?.num_apolice || "—"}</div>
-                </TableCell>
-                <TableCell className="hidden md:table-cell text-muted-foreground">
-                  {l.producoes?.tipos_produto?.nome ?? "—"}
-                </TableCell>
-                <TableCell className="hidden md:table-cell text-muted-foreground">{l.periodo}</TableCell>
-                <TableCell className="hidden md:table-cell text-muted-foreground">{l.parcela || "—"}</TableCell>
-                <TableCell>{fmtMoney(l.comissao_bruta)}</TableCell>
-              </TableRow>
-            ))}
+            {linhas.map((l) => {
+              const pct = l.producoes?.comissao_pct ?? null;
+              const valorComissao = Number(l.comissao_bruta ?? 0) * (Number(pct ?? 0) / 100);
+              return (
+                <TableRow key={l.id}>
+                  <TableCell>
+                    {isAdmin ? (
+                      <Link href={`/repasses/${id}/linhas/${l.id}`} className="font-medium hover:text-primary">
+                        {l.producoes?.clientes?.nome ?? "—"}
+                      </Link>
+                    ) : (
+                      <span className="font-medium">{l.producoes?.clientes?.nome ?? "—"}</span>
+                    )}
+                    <div className="text-xs text-muted-foreground">Apólice {l.producoes?.num_apolice || "—"}</div>
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell text-muted-foreground">
+                    {l.producoes?.tipos_produto?.nome ?? "—"}
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell text-muted-foreground">{l.periodo}</TableCell>
+                  <TableCell className="hidden md:table-cell text-muted-foreground">{l.parcela || "—"}</TableCell>
+                  <TableCell>{fmtMoney(l.comissao_bruta)}</TableCell>
+                  <TableCell className="hidden md:table-cell text-muted-foreground">{fmtPct(pct)}</TableCell>
+                  <TableCell className="font-medium text-success">{fmtMoney(valorComissao)}</TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>

@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { createClient } from "@/lib/supabase/server";
+import { requireCurrentUsuario } from "@/lib/auth/get-current-usuario";
 import { fmtDateCurta, fmtMoney, periodoAtual } from "@/lib/format";
 import type { RepasseLote } from "@/types/database";
 
@@ -24,13 +25,32 @@ export default async function RepassesPage({
   const inicioEfetivo = temFiltroData ? inicio! : modoTudo ? null : `${atual}-01`;
   const fimEfetivo = temFiltroData ? fim! : modoTudo ? null : `${atual}-31`;
 
+  const usuario = await requireCurrentUsuario();
+  const isAdmin = usuario.papel === "admin";
   const supabase = await createClient();
-  const [{ data: lotesRaw }, { data: clientesRaw }] = await Promise.all([
+  const [{ data: lotesRaw }, { data: clientesRaw }, { data: repassesRaw }] = await Promise.all([
     supabase.from("repasses_lotes").select("*").order("periodo_inicio", { ascending: false }),
     supabase.from("clientes").select("id, nome").order("nome"),
+    // RLS já limita o vendedor às próprias produções — usamos essas linhas
+    // (em vez de repasses_lotes.comissao_bruta_total, que é da empresa
+    // inteira) pra saber o que é dele em cada lote.
+    supabase.from("repasses").select("lote_id, comissao_bruta, producoes(comissao_pct)"),
   ]);
   let lotes = (lotesRaw ?? []) as RepasseLote[];
   const clientes = (clientesRaw ?? []) as { id: string; nome: string }[];
+  const repasses = (repassesRaw ?? []) as unknown as Array<{
+    lote_id: string;
+    comissao_bruta: number | null;
+    producoes: { comissao_pct: number | null } | null;
+  }>;
+  const faturadoPorLote = new Map<string, number>();
+  const comissaoPorLote = new Map<string, number>();
+  for (const r of repasses) {
+    const bruto = Number(r.comissao_bruta ?? 0);
+    faturadoPorLote.set(r.lote_id, (faturadoPorLote.get(r.lote_id) ?? 0) + bruto);
+    const pct = Number(r.producoes?.comissao_pct ?? 0) / 100;
+    comissaoPorLote.set(r.lote_id, (comissaoPorLote.get(r.lote_id) ?? 0) + bruto * pct);
+  }
 
   if (inicioEfetivo && fimEfetivo) {
     lotes = lotes.filter((l) => l.periodo_inicio <= fimEfetivo && l.periodo_fim >= inicioEfetivo);
@@ -108,9 +128,16 @@ export default async function RepassesPage({
               <div className="font-medium">
                 Repasse {fmtDateCurta(lote.periodo_inicio)} à {fmtDateCurta(lote.periodo_fim)}
               </div>
+              {!isAdmin && (
+                <div className="text-xs text-success">
+                  Sua comissão: {fmtMoney(comissaoPorLote.get(lote.id) ?? 0)}
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-3">
-              <span className="font-medium">{fmtMoney(lote.comissao_bruta_total)}</span>
+              <span className="font-medium">
+                {fmtMoney(isAdmin ? lote.comissao_bruta_total : faturadoPorLote.get(lote.id) ?? 0)}
+              </span>
               <StatusBadge status={lote.status} />
             </div>
           </Link>

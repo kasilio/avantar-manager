@@ -19,13 +19,17 @@ export function RepasseForm({
   repasse,
   producoes,
   action,
+  readOnly,
 }: {
   repasse: Repasse;
   producoes: (Producao & { clientes: Pick<Cliente, "nome"> | null })[];
   action: (formData: FormData) => void;
+  /** Vendedor só enxerga (RLS bloqueia escrita em repasses) — trava o form pra não parecer editável. */
+  readOnly?: boolean;
 }) {
   return (
     <form action={action} className="flex flex-col gap-4">
+    <fieldset disabled={readOnly} className="contents">
       <input type="hidden" name="lote_id" value={repasse.lote_id} />
 
       <div className="flex flex-col gap-2">
@@ -73,10 +77,13 @@ export function RepasseForm({
           <Input id="repasse_pct" name="repasse_pct" type="number" step="0.001" defaultValue={repasse.repasse_pct ?? ""} />
         </div>
       </div>
+    </fieldset>
 
-      <Button type="submit" className="self-start">
-        Salvar alterações
-      </Button>
+      {!readOnly && (
+        <Button type="submit" className="self-start">
+          Salvar alterações
+        </Button>
+      )}
     </form>
   );
 }
