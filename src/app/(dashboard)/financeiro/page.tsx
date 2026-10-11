@@ -283,6 +283,7 @@ export default async function FinanceiroPage({
               </Link>
             </>
           )}
+          <LinkButton href="/financeiro/nfse" variant="outline" size="sm">Notas fiscais</LinkButton>
           <SettingsDialogForm settings={settings} />
         </div>
       </div>

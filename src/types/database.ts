@@ -276,6 +276,35 @@ export type FechamentoMensal = {
   updated_at: string;
 };
 
+export type AmbienteNfse = "restrita" | "producao";
+export type StatusNfseEmissao = "rascunho" | "assinado" | "enviando" | "autorizado" | "rejeitado" | "erro";
+
+export type NfseEmissao = {
+  id: string;
+  competencia: string;
+  valor: number;
+  serie_dps: string;
+  numero_dps: number;
+  ambiente: AmbienteNfse;
+  status: StatusNfseEmissao;
+  dps_xml: string | null;
+  dps_xml_assinado: string | null;
+  chave_acesso: string | null;
+  numero_nfse: string | null;
+  nfse_xml: string | null;
+  motivo_rejeicao: string | null;
+  erro_detalhe: string | null;
+  payload_enviado: Record<string, unknown> | null;
+  payload_resposta: Record<string, unknown> | null;
+  criado_por: string | null;
+  confirmado_por: string | null;
+  confirmado_em: string | null;
+  transmitido_em: string | null;
+  autorizado_em: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 type TableDef<Row, Insert, Update = Partial<Insert>> = {
   Row: Row;
   Insert: Insert;
@@ -306,6 +335,7 @@ export type Database = {
       settings: TableDef<Settings, Partial<Omit<Settings, "updated_at">>>;
       metas_mensais: TableDef<MetaMensal, Omit<MetaMensal, "created_at" | "updated_at" | "gerado_automaticamente"> & Partial<Pick<MetaMensal, "gerado_automaticamente">>>;
       fechamentos_mensais: TableDef<FechamentoMensal, Omit<FechamentoMensal, "created_at" | "updated_at">>;
+      nfse_emissoes: TableDef<NfseEmissao, Omit<NfseEmissao, "id" | "created_at" | "updated_at" | "serie_dps" | "status"> & Partial<Pick<NfseEmissao, "serie_dps" | "status">>>;
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
