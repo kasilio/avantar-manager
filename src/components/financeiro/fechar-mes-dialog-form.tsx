@@ -50,7 +50,11 @@ export function FecharMesDialogForm({
   async function handleSubmit(formData: FormData) {
     setErro(null);
     try {
-      await fecharMes(periodo, formData);
+      const resultado = await fecharMes(periodo, formData);
+      if (resultado?.error) {
+        setErro(resultado.error);
+        return;
+      }
       setOpen(false);
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao fechar o mês.");

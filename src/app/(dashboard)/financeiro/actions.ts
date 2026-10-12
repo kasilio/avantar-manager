@@ -160,8 +160,14 @@ export async function parseDas(formData: FormData) {
 }
 
 /** Fecha o mês: só permite se não sobrar nenhum lote de repasse daquele mês
- * ainda pendente de pagamento (senão lista quais). */
-export async function fecharMes(periodo: string, formData: FormData) {
+ * ainda pendente de pagamento (senão lista quais).
+ *
+ * Retorna `{ error }` em vez de lançar pra esse caso (validação de negócio
+ * esperada, não um bug): em produção, erros lançados numa Server Action não
+ * chegam ao cliente com a mensagem original (o form mostrava "Minified React
+ * error #441" em vez do texto real — confirmado no log do servidor). Valor de
+ * retorno é serializado e entregue íntegro, então o texto chega certo. */
+export async function fecharMes(periodo: string, formData: FormData): Promise<{ error: string } | void> {
   const usuario = await requireAdmin();
   const supabase = await createClient();
 
@@ -174,9 +180,9 @@ export async function fecharMes(periodo: string, formData: FormData) {
     .gte("periodo_fim", inicioMes);
   const pendentes = (lotesDoMes ?? []).filter((l) => l.status !== "pago");
   if (pendentes.length > 0) {
-    throw new Error(
-      `Ainda há ${pendentes.length} repasse(s) desse mês sem pagamento confirmado — feche a NF/pagamento deles primeiro (${pendentes.map((l) => `${l.periodo_inicio} a ${l.periodo_fim}`).join(", ")}).`,
-    );
+    return {
+      error: `Ainda há ${pendentes.length} repasse(s) desse mês sem pagamento confirmado — feche a NF/pagamento deles primeiro (${pendentes.map((l) => `${l.periodo_inicio} a ${l.periodo_fim}`).join(", ")}).`,
+    };
   }
 
   const numeroDocumento = String(formData.get("das_numero_documento") ?? "").trim() || null;
