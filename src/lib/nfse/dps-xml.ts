@@ -77,6 +77,10 @@ export function montarDpsXml(dados: DadosRascunhoDps): string {
       .ele("email").txt(PRESTADOR.email).up()
       .ele("regTrib")
         .ele("opSimpNac").txt(PRESTADOR.opSimpNac).up()
+        // Obrigatório pro erro E0166 quando opSimpNac=3 (ME/EPP) — valor
+        // confirmado na própria NFS-e nº16 real (PDF): "Regime de apuração
+        // dos tributos federais e municipal pelo Simples Nacional" = 1.
+        .ele("regApTribSN").txt("1").up()
         .ele("regEspTrib").txt("0").up() // 0 = Nenhum regime especial
       .up()
     .up()
