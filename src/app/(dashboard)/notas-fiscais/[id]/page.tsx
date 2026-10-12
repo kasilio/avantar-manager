@@ -125,16 +125,23 @@ export default async function NfseRevisaoPage({ params }: { params: Promise<{ id
           <CardContent className="flex flex-col gap-2 py-4 text-sm">
             <p className="font-medium text-success">NFS-e autorizada</p>
             <p className="text-muted-foreground">Número: {emissao.numero_nfse}</p>
-            <p className="text-muted-foreground">Chave de acesso: {emissao.chave_acesso}</p>
+            <p className="text-muted-foreground">
+              Chave de acesso: <span className="font-mono">{emissao.chave_acesso}</span>
+            </p>
             {emissao.chave_acesso && (
-              <a
-                href={`https://www.nfse.gov.br/ConsultaPublica/NFSe/Impressao?chave=${emissao.chave_acesso}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex w-fit items-center gap-1.5 text-primary hover:underline"
-              >
-                <FileDown className="size-4" /> Ver PDF (DANFSe) no portal do governo
-              </a>
+              <div className="flex flex-col gap-1">
+                <a
+                  href="https://www.nfse.gov.br/ConsultaPublica"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex w-fit items-center gap-1.5 text-primary hover:underline"
+                >
+                  <FileDown className="size-4" /> Consultar/baixar PDF (DANFSe) no portal do governo
+                </a>
+                <p className="text-xs text-muted-foreground">
+                  No portal, escolha &quot;Por Chave de Acesso&quot; e cole a chave acima.
+                </p>
+              </div>
             )}
           </CardContent>
         </Card>
