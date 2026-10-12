@@ -52,7 +52,12 @@ export const SERVICO = {
   tipoRetencaoIssqn: "1",
 } as const;
 
-export const SERIE_DPS_PADRAO = "70000";
+// Faixas de série por tipo de emissor (confirmado na planilha oficial
+// ANEXO_I, regra do erro E0010, depois de uma rejeição real):
+//   00001–49999 = emissão por aplicativo próprio (API) — nosso caso;
+//   50000–69999 = emissor móvel; 70000–79999 = emissor Web (usado na nota
+//   nº16, emitida pelo portal nfse.gov.br — por isso não serve aqui).
+export const SERIE_DPS_PADRAO = "00001";
 
 /** Código do município emissor da NFS-e (cLocEmi) — sempre o do prestador. */
 export const CODIGO_MUNICIPIO_EMISSOR = PRESTADOR.codigoIbge;
