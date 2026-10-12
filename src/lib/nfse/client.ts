@@ -14,7 +14,10 @@ function hostSefin(ambiente: AmbienteNfse): string {
   return ambiente === "producao" ? "sefin.nfse.gov.br" : "sefin.producaorestrita.nfse.gov.br";
 }
 
-type MensagemProcessamento = { codigo?: string; descricao?: string; complemento?: string };
+// A doc do swagger documenta minúsculo (codigo/descricao/complemento), mas
+// uma rejeição real em produção restrita voltou com PascalCase
+// (Codigo/Descricao) — a doc está errada nisso, o runtime manda maiúsculo.
+type MensagemProcessamento = { Codigo?: string; Descricao?: string; Complemento?: string };
 
 type NFSePostResponseSucesso = {
   tipoAmbiente: number;
@@ -56,7 +59,7 @@ function extrairNumeroNfse(nfseXml: string): string | null {
 
 function formatarMensagens(mensagens: MensagemProcessamento[] | undefined): string {
   if (!mensagens || mensagens.length === 0) return "Sem detalhe retornado pelo governo.";
-  return mensagens.map((m) => [m.codigo, m.descricao, m.complemento].filter(Boolean).join(" — ")).join("; ");
+  return mensagens.map((m) => [m.Codigo, m.Descricao, m.Complemento].filter(Boolean).join(" — ")).join("; ");
 }
 
 /**

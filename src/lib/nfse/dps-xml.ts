@@ -37,14 +37,13 @@ function formatarValor(valor: number): string {
  * Monta o Id de 45 posições da infDPS: "DPS" + Cód.Mun(7) + Tipo de
  * Inscrição Federal(1) + Inscrição Federal(14) + Série(5) + Núm.DPS(15).
  *
- * NÃO CONFIRMADO: o dígito de "tipo de inscrição federal" não tem seus
- * valores (1/2/3/4) documentados explicitamente no texto do XSD — só a
- * ordem do xs:choice (CNPJ, CPF, NIF, cNaoNIF) sugere 1=CNPJ. Confirmar
- * contra o Anexo I (planilha) ou um retorno de rejeição em produção
- * restrita antes de usar em produção real.
+ * Tipo de Inscrição Federal: 1 = CPF, 2 = CNPJ — confirmado na planilha
+ * oficial ANEXO_I-SEFIN_ADN-DPS_NFSe-SNNFSe (regra do erro E0004), depois de
+ * uma rejeição real em produção restrita com o valor trocado (eu tinha
+ * assumido 1=CNPJ pela ordem do xs:choice do XSD, que estava errado).
  */
 function montarIdDps(numeroDps: number, serieDps: string): string {
-  const tipoInscricaoFederal = "1"; // 1 = CNPJ (não confirmado, ver acima)
+  const tipoInscricaoFederal = "2"; // 2 = CNPJ (prestador usa CNPJ)
   const inscricaoFederal = PRESTADOR.cnpj.padStart(14, "0");
   const serie = serieDps.padStart(5, "0");
   const numero = String(numeroDps).padStart(15, "0");
