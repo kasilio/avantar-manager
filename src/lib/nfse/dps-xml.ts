@@ -68,16 +68,11 @@ export function montarDpsXml(dados: DadosRascunhoDps): string {
     .ele("cLocEmi").txt(CODIGO_MUNICIPIO_EMISSOR).up()
     .ele("prest")
       .ele("CNPJ").txt(PRESTADOR.cnpj).up()
-      .ele("xNome").txt(PRESTADOR.nome).up()
-      .ele("end")
-        .ele("endNac")
-          .ele("cMun").txt(PRESTADOR.codigoIbge).up()
-          .ele("CEP").txt(PRESTADOR.cep).up()
-        .up()
-        .ele("xLgr").txt(PRESTADOR.logradouro).up()
-        .ele("nro").txt(PRESTADOR.numero).up()
-        .ele("xBairro").txt(PRESTADOR.bairro).up()
-      .up()
+      // xNome e end (endereço) ficam de fora de propósito: confirmado na
+      // planilha oficial ANEXO_I (regra do erro E0121, via rejeição real)
+      // que quando o emitente da DPS é o próprio prestador (tpEmit = 1),
+      // nome e endereço NÃO podem ser informados — o sistema já busca os
+      // dois pelo CNPJ/cadastro nacional.
       .ele("fone").txt(PRESTADOR.telefone).up()
       .ele("email").txt(PRESTADOR.email).up()
       .ele("regTrib")
