@@ -13,7 +13,7 @@ import { FecharMesDialogForm } from "@/components/financeiro/fechar-mes-dialog-f
 import { MonthlyBarChart } from "@/components/dashboard/monthly-bar-chart";
 import { createClient } from "@/lib/supabase/server";
 import { requireCurrentUsuario } from "@/lib/auth/get-current-usuario";
-import { fmtDate, fmtMoney, mesLabel, shiftPeriodo, periodoAtual } from "@/lib/format";
+import { fmtDate, fmtMoney, mesLabel, shiftPeriodo, periodoAtual, diasNoMes } from "@/lib/format";
 import { periodosParcelada } from "@/lib/despesas-tarefas";
 import type { FechamentoMensal } from "@/types/database";
 import { createDespesa, reabrirMes } from "./actions";
@@ -29,23 +29,34 @@ async function FinanceiroVendedor({ supabase, periodo }: { supabase: SupabaseSer
 
   const { data: repassesRaw } = await supabase
     .from("repasses")
-    .select("periodo, comissao_bruta, producoes(comissao_pct), repasses_lotes(status)")
+    .select("periodo, comissao_bruta, producoes(comissao_pct), repasses_lotes(status, periodo_fim)")
     .gte("periodo", meses[0]);
   const rows = (repassesRaw ?? []) as unknown as Array<{
     periodo: string;
     comissao_bruta: number | null;
     producoes: { comissao_pct: number | null } | null;
-    repasses_lotes: { status: string } | null;
+    repasses_lotes: { status: string; periodo_fim: string | null } | null;
   }>;
 
   const faturadoPorMes = new Map(meses.map((m) => [m, 0]));
   const comissaoPorMes = new Map(meses.map((m) => [m, 0]));
+  // Já faturado (NF emitida e autorizada) mas ainda sem pagamento confirmado
+  // — o lote "pertence" ao mês em que seu período termina (periodo_fim), não
+  // ao mês tageado em cada repasse individual, mesmo critério do fecharMes()
+  // (ver financeiro/actions.ts) e da Visão Geral.
+  let aguardandoFaturadoMes = 0;
+  let aguardandoComissaoMes = 0;
   for (const r of rows) {
-    if (r.repasses_lotes?.status !== "pago" || !faturadoPorMes.has(r.periodo)) continue;
+    if (!faturadoPorMes.has(r.periodo)) continue;
     const bruto = Number(r.comissao_bruta ?? 0);
-    faturadoPorMes.set(r.periodo, (faturadoPorMes.get(r.periodo) ?? 0) + bruto);
     const pct = Number(r.producoes?.comissao_pct ?? 0) / 100;
-    comissaoPorMes.set(r.periodo, (comissaoPorMes.get(r.periodo) ?? 0) + bruto * pct);
+    if (r.repasses_lotes?.status === "pago") {
+      faturadoPorMes.set(r.periodo, (faturadoPorMes.get(r.periodo) ?? 0) + bruto);
+      comissaoPorMes.set(r.periodo, (comissaoPorMes.get(r.periodo) ?? 0) + bruto * pct);
+    } else if (r.repasses_lotes?.status === "aguardando_pagamento" && r.repasses_lotes.periodo_fim?.slice(0, 7) === periodo) {
+      aguardandoFaturadoMes += bruto;
+      aguardandoComissaoMes += bruto * pct;
+    }
   }
 
   const faturadoMes = faturadoPorMes.get(periodo) ?? 0;
@@ -82,6 +93,11 @@ async function FinanceiroVendedor({ supabase, periodo }: { supabase: SupabaseSer
           </CardHeader>
           <CardContent>
             <div className="text-xl font-bold">{fmtMoney(faturadoMes)}</div>
+            {aguardandoFaturadoMes > 0 && (
+              <p className="mt-0.5 text-[11px] text-warning">
+                + {fmtMoney(aguardandoFaturadoMes)} aguardando pagamento (NF já emitida)
+              </p>
+            )}
           </CardContent>
         </Card>
         <Card className="border-success/30 bg-success/5">
@@ -91,6 +107,11 @@ async function FinanceiroVendedor({ supabase, periodo }: { supabase: SupabaseSer
           </CardHeader>
           <CardContent>
             <div className="text-xl font-bold text-success">{fmtMoney(comissaoMes)}</div>
+            {aguardandoComissaoMes > 0 && (
+              <p className="mt-0.5 text-[11px] text-warning">
+                + {fmtMoney(aguardandoComissaoMes)} aguardando pagamento (NF já emitida)
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -154,7 +175,7 @@ export default async function FinanceiroPage({
     return <FinanceiroVendedor supabase={supabase} periodo={periodo} />;
   }
 
-  const [{ data: repasses }, { data: despesas }, { data: pagamentos }, { data: settingsRow }, { data: fechamentoRow }, { data: historicoValores }] = await Promise.all([
+  const [{ data: repasses }, { data: despesas }, { data: pagamentos }, { data: settingsRow }, { data: fechamentoRow }, { data: historicoValores }, { data: lotesAguardandoRaw }] = await Promise.all([
     modoIntervalo || modoTudo
       ? supabase.from("repasses").select("*, producoes(comissao_pct), repasses_lotes(status, data_pagamento)")
       : supabase.from("repasses").select("*, producoes(comissao_pct), repasses_lotes(status)").eq("periodo", periodo),
@@ -167,6 +188,19 @@ export default async function FinanceiroPage({
       ? Promise.resolve({ data: null as FechamentoMensal | null })
       : supabase.from("fechamentos_mensais").select("*").eq("periodo", periodo).maybeSingle(),
     supabase.from("despesas_historico_valores").select("*"),
+    // Lotes já faturados (NF emitida e autorizada) mas ainda sem pagamento
+    // confirmado, cujo período TERMINA no mês selecionado — mesmo critério
+    // do fecharMes() (ver ./actions.ts). Consulta direta em repasses_lotes
+    // (não via `repasses.periodo`, que é tageado por repasse individual e
+    // pode divergir do mês real do lote).
+    modoIntervalo || modoTudo
+      ? Promise.resolve({ data: [] as { comissao_bruta_total: number | null }[] })
+      : supabase
+          .from("repasses_lotes")
+          .select("comissao_bruta_total")
+          .eq("status", "aguardando_pagamento")
+          .gte("periodo_fim", `${periodo}-01`)
+          .lte("periodo_fim", `${periodo}-${String(diasNoMes(periodo)).padStart(2, "0")}`),
   ]);
   const fechamento = fechamentoRow as FechamentoMensal | null;
   const estaFechado = Boolean(fechamento?.fechado_em);
@@ -187,6 +221,7 @@ export default async function FinanceiroPage({
     : rowsRaw;
 
   const comissaoBruta = rows.reduce((sum, r) => sum + (r.repasses_lotes?.status === "pago" ? Number(r.comissao_bruta ?? 0) : 0), 0);
+  const aguardandoBruta = (lotesAguardandoRaw ?? []).reduce((sum, l) => sum + Number(l.comissao_bruta_total ?? 0), 0);
   const simples = estaFechado && fechamento?.das_valor != null ? Number(fechamento.das_valor) : comissaoBruta * (Number(settings.aliquota_simples) / 100);
   const comissaoLiquida = comissaoBruta - simples;
 
@@ -337,6 +372,12 @@ export default async function FinanceiroPage({
             )}
           </CardContent>
         </Card>
+      )}
+
+      {aguardandoBruta > 0 && (
+        <p className="text-sm text-warning">
+          + {fmtMoney(aguardandoBruta)} aguardando pagamento (NF já emitida) — ainda não entra na Comissão bruta abaixo.
+        </p>
       )}
 
       <Card>

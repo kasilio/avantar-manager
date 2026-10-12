@@ -22,7 +22,7 @@ type RepasseAgregado = {
     tipos_produto: { nome: string } | null;
     seguradoras: { nome: string } | null;
   } | null;
-  repasses_lotes: { status: string } | null;
+  repasses_lotes: { status: string; periodo_fim: string | null } | null;
 };
 
 export default async function DashboardPage({
@@ -83,7 +83,9 @@ export default async function DashboardPage({
     todasTarefas(supabase, { horizonteDias: 400 }),
     supabase
       .from("repasses")
-      .select("periodo, comissao_bruta, producoes(comissao_pct, clientes(nome), tipos_produto(nome), seguradoras(nome)), repasses_lotes(status)"),
+      .select(
+        "periodo, comissao_bruta, producoes(comissao_pct, clientes(nome), tipos_produto(nome), seguradoras(nome)), repasses_lotes(status, periodo_fim)",
+      ),
     supabase.from("settings").select("*").eq("id", true).single(),
     supabase.from("prospeccoes").select("*", { count: "exact", head: true }).neq("coluna_id", "fechado").neq("coluna_id", "perdido"),
     isAdmin ? supabase.from("repasses_lotes").select("*") : Promise.resolve({ data: null }),
@@ -123,6 +125,11 @@ export default async function DashboardPage({
   let comissaoBruta = 0;
   let suaComissao = 0;
   let previsao = false;
+  // Já faturado (NF emitida e autorizada) mas ainda sem pagamento confirmado
+  // — repasses_lotes.status só chega em "aguardando_pagamento" depois que a
+  // NFS-e é autorizada (ver transmitir() em notas-fiscais/actions.ts).
+  let aguardandoBruta = 0;
+  let aguardandoComissao = 0;
 
   if (isFuturo) {
     previsao = true;
@@ -130,10 +137,21 @@ export default async function DashboardPage({
     suaComissao = previsaoSuaComissao;
   } else {
     for (const r of allRows) {
-      if (r.periodo !== periodo || r.repasses_lotes?.status !== "pago") continue;
       const bruto = Number(r.comissao_bruta ?? 0);
-      comissaoBruta += bruto;
-      suaComissao += bruto * (Number(r.producoes?.comissao_pct ?? 0) / 100);
+      const pct = Number(r.producoes?.comissao_pct ?? 0) / 100;
+      if (r.periodo === periodo && r.repasses_lotes?.status === "pago") {
+        comissaoBruta += bruto;
+        suaComissao += bruto * pct;
+      }
+      // O lote "pertence" ao mês em que seu período termina, não ao mês
+      // em que cada repasse individual foi tageado — mesmo critério do
+      // fecharMes() (ver financeiro/actions.ts), senão um lote que cobre
+      // 11/09 a 09/10 (faturado com competência de outubro) aparecia como
+      // pendência de setembro.
+      if (r.repasses_lotes?.status === "aguardando_pagamento" && r.repasses_lotes.periodo_fim?.slice(0, 7) === periodo) {
+        aguardandoBruta += bruto;
+        aguardandoComissao += bruto * pct;
+      }
     }
   }
 
@@ -145,12 +163,28 @@ export default async function DashboardPage({
   // vendedor.
   const faturamentoPorMes = new Map(mesesEvolucao.map((m) => [m, 0]));
   const comissaoPorMes = new Map(mesesEvolucao.map((m) => [m, 0]));
+  // Total do ano corrente e histórico desde sempre — não ficam restritos à
+  // janela de 12 meses do gráfico, por isso somados num loop à parte sobre
+  // todos os repasses pagos.
+  const anoAtual = atual.slice(0, 4);
+  let faturamentoAno = 0;
+  let comissaoAno = 0;
+  let faturamentoTotal = 0;
+  let comissaoTotal = 0;
   for (const r of allRows) {
-    if (r.repasses_lotes?.status !== "pago" || !faturamentoPorMes.has(r.periodo)) continue;
+    if (r.repasses_lotes?.status !== "pago") continue;
     const bruto = Number(r.comissao_bruta ?? 0);
-    faturamentoPorMes.set(r.periodo, (faturamentoPorMes.get(r.periodo) ?? 0) + bruto);
     const pct = Number(r.producoes?.comissao_pct ?? 0) / 100;
-    comissaoPorMes.set(r.periodo, (comissaoPorMes.get(r.periodo) ?? 0) + bruto * pct);
+    if (faturamentoPorMes.has(r.periodo)) {
+      faturamentoPorMes.set(r.periodo, (faturamentoPorMes.get(r.periodo) ?? 0) + bruto);
+      comissaoPorMes.set(r.periodo, (comissaoPorMes.get(r.periodo) ?? 0) + bruto * pct);
+    }
+    faturamentoTotal += bruto;
+    comissaoTotal += bruto * pct;
+    if (r.periodo.startsWith(anoAtual)) {
+      faturamentoAno += bruto;
+      comissaoAno += bruto * pct;
+    }
   }
   const evolucaoFaturamento = mesesEvolucao.map((periodo) => ({ periodo, valor: faturamentoPorMes.get(periodo) ?? 0 }));
   const evolucaoComissao = mesesEvolucao.map((periodo) => ({ periodo, valor: comissaoPorMes.get(periodo) ?? 0 }));
@@ -283,6 +317,11 @@ export default async function DashboardPage({
                 Total recebido da sua carteira — antes da sua comissão.
               </p>
             )}
+            {!previsao && aguardandoBruta > 0 && (
+              <p className="mt-0.5 text-[11px] text-warning">
+                + {fmtMoney(aguardandoBruta)} aguardando pagamento (NF já emitida)
+              </p>
+            )}
           </CardContent>
         </Card>
         {isAdmin ? (
@@ -306,6 +345,11 @@ export default async function DashboardPage({
             <CardContent>
               <div className="text-xl font-bold text-success">{fmtMoney(suaComissao)}</div>
               <p className="mt-0.5 text-[11px] text-muted-foreground">O que cai no seu bolso, já aplicando a sua % em cada produção.</p>
+              {!previsao && aguardandoComissao > 0 && (
+                <p className="mt-0.5 text-[11px] text-warning">
+                  + {fmtMoney(aguardandoComissao)} aguardando pagamento (NF já emitida)
+                </p>
+              )}
             </CardContent>
           </Card>
         )}
@@ -339,8 +383,18 @@ export default async function DashboardPage({
               {isAdmin ? "Faturamento mês a mês" : "Sua comissão mês a mês"}
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex flex-col gap-4">
             <MonthlyBarChart dados={isAdmin ? evolucaoFaturamento : evolucaoComissao} cor={isAdmin ? "primary" : "success"} />
+            <div className="grid grid-cols-2 gap-3 border-t border-border pt-3 text-sm">
+              <div>
+                <div className="text-xs text-muted-foreground">Total em {anoAtual}</div>
+                <div className="text-lg font-bold">{fmtMoney(isAdmin ? faturamentoAno : comissaoAno)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Total histórico</div>
+                <div className="text-lg font-bold">{fmtMoney(isAdmin ? faturamentoTotal : comissaoTotal)}</div>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
