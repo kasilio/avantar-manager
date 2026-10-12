@@ -277,7 +277,7 @@ export type FechamentoMensal = {
 };
 
 export type AmbienteNfse = "restrita" | "producao";
-export type StatusNfseEmissao = "rascunho" | "assinado" | "enviando" | "autorizado" | "rejeitado" | "erro";
+export type StatusNfseEmissao = "rascunho" | "assinado" | "enviando" | "autorizado" | "rejeitado" | "erro" | "cancelado";
 
 export type NfseEmissao = {
   id: string;
@@ -302,6 +302,10 @@ export type NfseEmissao = {
   confirmado_em: string | null;
   transmitido_em: string | null;
   autorizado_em: string | null;
+  evento_cancelamento_xml: string | null;
+  motivo_cancelamento: string | null;
+  cancelado_em: string | null;
+  cancelado_por: string | null;
   created_at: string;
   updated_at: string;
 };

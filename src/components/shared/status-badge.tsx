@@ -18,6 +18,7 @@ const STATUS_MAP: Record<string, { label: string; className: string }> = {
   autorizado: { label: "🟢 Autorizado", className: "bg-success/15 text-success border-success/30" },
   rejeitado: { label: "🔴 Rejeitado", className: "bg-destructive/15 text-destructive border-destructive/30" },
   erro: { label: "🔴 Erro", className: "bg-destructive/15 text-destructive border-destructive/30" },
+  cancelado: { label: "⚫ Cancelado", className: "bg-muted text-muted-foreground border-border" },
 };
 
 export function StatusBadge({ status }: { status: string }) {

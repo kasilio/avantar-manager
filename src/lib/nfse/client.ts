@@ -57,31 +57,26 @@ function extrairNumeroNfse(nfseXml: string): string | null {
   return m ? m[1] : null;
 }
 
-function formatarMensagens(mensagens: MensagemProcessamento[] | undefined): string {
-  if (!mensagens || mensagens.length === 0) return "Sem detalhe retornado pelo governo.";
-  return mensagens.map((m) => [m.Codigo, m.Descricao, m.Complemento].filter(Boolean).join(" — ")).join("; ");
+function formatarMensagens(mensagens: MensagemProcessamento[] | MensagemProcessamento | undefined): string {
+  const lista = Array.isArray(mensagens) ? mensagens : mensagens ? [mensagens] : [];
+  if (lista.length === 0) return "Sem detalhe retornado pelo governo.";
+  return lista.map((m) => [m.Codigo, m.Descricao, m.Complemento].filter(Boolean).join(" — ")).join("; ");
 }
 
-/**
- * POST /nfse — recepção síncrona da DPS, conforme o spec OpenAPI oficial
- * obtido via mTLS em
- * https://sefin.producaorestrita.nfse.gov.br/SefinNacional/swagger/docs/v1
- * (protocolo: TLS com autenticação mútua; mensagens em JSON; XML da DPS
- * compactado em GZip + base64 no campo `dpsXmlGZipB64`).
- */
-export async function enviarDps(dpsXmlAssinado: string, ambiente: AmbienteNfse): Promise<ResultadoEnvioDps> {
+/** POST JSON genérico pra Sefin Nacional, via mTLS — usado tanto pra /nfse quanto pra /nfse/{chave}/eventos. */
+function postSefinJson(ambiente: AmbienteNfse, path: string, body: unknown, descricaoAcao: string): Promise<{ status: number; json: unknown }> {
   const agent = criarAgenteMtls();
   const host = hostSefin(ambiente);
-  const body = JSON.stringify({ dpsXmlGZipB64: gzipBase64(dpsXmlAssinado) });
+  const payload = JSON.stringify(body);
 
-  const { status, json } = await new Promise<{ status: number; json: unknown }>((resolve, reject) => {
+  return new Promise((resolve, reject) => {
     const req = request(
       {
         agent,
         host,
-        path: "/SefinNacional/nfse",
+        path,
         method: "POST",
-        headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) },
+        headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) },
         timeout: 30_000,
       },
       (res) => {
@@ -96,14 +91,30 @@ export async function enviarDps(dpsXmlAssinado: string, ambiente: AmbienteNfse):
         });
       },
     );
-    req.on("error", (err) => reject(new NfseErroTransporteError(`Falha de rede/TLS ao transmitir a NFS-e: ${err.message}`)));
+    req.on("error", (err) => reject(new NfseErroTransporteError(`Falha de rede/TLS ao ${descricaoAcao}: ${err.message}`)));
     req.on("timeout", () => {
       req.destroy();
-      reject(new NfseErroTransporteError("Timeout ao transmitir a NFS-e (30s)."));
+      reject(new NfseErroTransporteError(`Timeout ao ${descricaoAcao} (30s).`));
     });
-    req.write(body);
+    req.write(payload);
     req.end();
   });
+}
+
+/**
+ * POST /nfse — recepção síncrona da DPS, conforme o spec OpenAPI oficial
+ * obtido via mTLS em
+ * https://sefin.producaorestrita.nfse.gov.br/SefinNacional/swagger/docs/v1
+ * (protocolo: TLS com autenticação mútua; mensagens em JSON; XML da DPS
+ * compactado em GZip + base64 no campo `dpsXmlGZipB64`).
+ */
+export async function enviarDps(dpsXmlAssinado: string, ambiente: AmbienteNfse): Promise<ResultadoEnvioDps> {
+  const { status, json } = await postSefinJson(
+    ambiente,
+    "/SefinNacional/nfse",
+    { dpsXmlGZipB64: gzipBase64(dpsXmlAssinado) },
+    "transmitir a NFS-e",
+  );
 
   if (status === 201) {
     const sucesso = json as NFSePostResponseSucesso;
@@ -129,5 +140,61 @@ export async function enviarDps(dpsXmlAssinado: string, ambiente: AmbienteNfse):
   const erro = json as NFSePostResponseErro | null;
   throw new NfseErroTransporteError(
     `Falha ao processar o DPS na Sefin Nacional (HTTP ${status}): ${formatarMensagens(erro?.erros)}`,
+  );
+}
+
+type EventoPostResponseSucesso = {
+  tipoAmbiente: number;
+  versaoAplicativo: string;
+  dataHoraProcessamento: string;
+  eventoXmlGZipB64: string;
+};
+
+// Diferente de /nfse (que manda `erros`, array), /eventos manda `erro`
+// (singular, um objeto só) — confirmado no spec oficial.
+type EventoResponseErro = { erro?: MensagemProcessamento };
+
+export type ResultadoEnvioEvento =
+  | { registrado: true; eventoXml: string; payloadResposta: Record<string, unknown> }
+  | { registrado: false; motivoRejeicao: string; payloadResposta: Record<string, unknown> };
+
+/**
+ * POST /nfse/{chaveAcesso}/eventos — registro síncrono de evento (ex.:
+ * cancelamento), mesmo spec OpenAPI oficial do /nfse. Campo do corpo
+ * confirmado no spec: `pedidoRegistroEventoXmlGZipB64`.
+ */
+export async function enviarEvento(
+  chaveAcesso: string,
+  pedRegEventoXmlAssinado: string,
+  ambiente: AmbienteNfse,
+): Promise<ResultadoEnvioEvento> {
+  const { status, json } = await postSefinJson(
+    ambiente,
+    `/SefinNacional/nfse/${chaveAcesso}/eventos`,
+    { pedidoRegistroEventoXmlGZipB64: gzipBase64(pedRegEventoXmlAssinado) },
+    "registrar o evento da NFS-e",
+  );
+
+  if (status === 201) {
+    const sucesso = json as EventoPostResponseSucesso;
+    return {
+      registrado: true,
+      eventoXml: ungzipBase64(sucesso.eventoXmlGZipB64),
+      payloadResposta: json as Record<string, unknown>,
+    };
+  }
+
+  if (status === 400) {
+    const erro = json as EventoResponseErro;
+    return {
+      registrado: false,
+      motivoRejeicao: formatarMensagens(erro.erro),
+      payloadResposta: json as Record<string, unknown>,
+    };
+  }
+
+  const erro = json as EventoResponseErro | null;
+  throw new NfseErroTransporteError(
+    `Falha ao registrar o evento na Sefin Nacional (HTTP ${status}): ${formatarMensagens(erro?.erro)}`,
   );
 }

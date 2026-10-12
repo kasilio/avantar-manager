@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TransmitirNfseForm } from "@/components/notas-fiscais/transmitir-nfse-form";
+import { CancelarNfseForm } from "@/components/notas-fiscais/cancelar-nfse-form";
 import { createClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/auth/get-current-usuario";
 import { fmtDate, fmtDateCurta, fmtMoney } from "@/lib/format";
@@ -28,6 +29,12 @@ export default async function NfseRevisaoPage({ params }: { params: Promise<{ id
     : { data: null };
 
   const ehProducao = emissao.ambiente === "producao";
+  // O aviso vermelho é um alerta PRÉ-transmissão ("confira antes de
+  // transmitir") — depois que já foi autorizada/rejeitada/deu erro, a ação
+  // já aconteceu, então manter um alerta vermelho só confunde/assusta à
+  // toa. Badge muda de cor junto, pra não ficar vermelho numa nota que já
+  // foi emitida com sucesso.
+  const aindaPendente = emissao.status === "rascunho" || emissao.status === "assinado" || emissao.status === "enviando";
 
   return (
     <div className="flex max-w-3xl flex-col gap-6">
@@ -35,12 +42,12 @@ export default async function NfseRevisaoPage({ params }: { params: Promise<{ id
         <h1 className="text-2xl font-semibold">
           NF — {fmtDate(emissao.competencia)} (DPS {emissao.serie_dps}/{emissao.numero_dps})
         </h1>
-        <Badge variant={ehProducao ? "destructive" : "outline"}>
+        <Badge variant={ehProducao && aindaPendente ? "destructive" : "outline"}>
           {ehProducao ? "PRODUÇÃO REAL" : "PRODUÇÃO RESTRITA — sem valor fiscal"}
         </Badge>
       </div>
 
-      {ehProducao && (
+      {ehProducao && aindaPendente && (
         <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
           <AlertTriangle className="size-4 shrink-0" />
           Esta emissão vai gerar um documento fiscal real. Confira tudo com atenção antes de transmitir.
@@ -115,10 +122,29 @@ export default async function NfseRevisaoPage({ params }: { params: Promise<{ id
       )}
       {emissao.status === "autorizado" && (
         <Card className="border-success/30 bg-success/5">
-          <CardContent className="flex flex-col gap-1 py-4 text-sm">
+          <CardContent className="flex flex-col gap-2 py-4 text-sm">
             <p className="font-medium text-success">NFS-e autorizada</p>
             <p className="text-muted-foreground">Número: {emissao.numero_nfse}</p>
             <p className="text-muted-foreground">Chave de acesso: {emissao.chave_acesso}</p>
+            {emissao.chave_acesso && (
+              <a
+                href={`https://www.nfse.gov.br/ConsultaPublica/NFSe/Impressao?chave=${emissao.chave_acesso}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex w-fit items-center gap-1.5 text-primary hover:underline"
+              >
+                <FileDown className="size-4" /> Ver PDF (DANFSe) no portal do governo
+              </a>
+            )}
+          </CardContent>
+        </Card>
+      )}
+      {emissao.status === "cancelado" && (
+        <Card className="border-destructive/30 bg-destructive/5">
+          <CardContent className="flex flex-col gap-1 py-4 text-sm">
+            <p className="font-medium text-destructive">NFS-e cancelada</p>
+            <p className="text-muted-foreground">Motivo: {emissao.motivo_cancelamento}</p>
+            <p className="text-muted-foreground">Cancelada em: {fmtDate(emissao.cancelado_em)}</p>
           </CardContent>
         </Card>
       )}
@@ -161,6 +187,8 @@ export default async function NfseRevisaoPage({ params }: { params: Promise<{ id
       )}
 
       {emissao.status === "assinado" && <TransmitirNfseForm id={id} />}
+
+      {emissao.status === "autorizado" && <CancelarNfseForm id={id} />}
 
       {emissao.status !== "rascunho" && !ehProducao && (
         <form action={excluirEmissao.bind(null, id)}>

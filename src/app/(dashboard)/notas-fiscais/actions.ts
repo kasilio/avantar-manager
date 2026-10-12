@@ -9,8 +9,9 @@ import { nfseEnv } from "@/lib/nfse/env";
 import { SERIE_DPS_PADRAO } from "@/lib/nfse/dados-fixos";
 import { proximoNumeroDps } from "@/lib/nfse/numero-dps";
 import { montarDpsXml } from "@/lib/nfse/dps-xml";
-import { assinarDps } from "@/lib/nfse/assinatura";
-import { enviarDps } from "@/lib/nfse/client";
+import { montarPedRegEventoCancelamentoXml, type CodigoMotivoCancelamento } from "@/lib/nfse/evento-xml";
+import { assinarDps, assinarPedRegEvento } from "@/lib/nfse/assinatura";
+import { enviarDps, enviarEvento } from "@/lib/nfse/client";
 
 /** Monta e salva o XML (sem assinar) de uma nova tentativa de emissão —
  * valor vem sugerido do total do lote de repasse (editável) e competência é
@@ -76,6 +77,10 @@ export async function criarRascunho(formData: FormData) {
       confirmado_em: null,
       transmitido_em: null,
       autorizado_em: null,
+      evento_cancelamento_xml: null,
+      motivo_cancelamento: null,
+      cancelado_em: null,
+      cancelado_por: null,
     })
     .select("id")
     .single();
@@ -251,4 +256,75 @@ export async function excluirEmissao(id: string) {
   revalidatePath("/notas-fiscais");
   if (emissao.repasse_lote_id) revalidatePath(`/repasses/${emissao.repasse_lote_id}`);
   redirect("/notas-fiscais");
+}
+
+/**
+ * Cancela uma NFS-e autorizada (evento e101101, direto — não cobre o fluxo
+ * de "Solicitação de Análise Fiscal" usado quando o prazo normal do
+ * município pra cancelamento direto já passou; se o governo rejeitar por
+ * prazo, a mensagem de erro deve indicar isso).
+ */
+export async function cancelarNfse(id: string, formData: FormData) {
+  const usuario = await requireAdmin();
+  const supabase = await createClient();
+
+  const { data: emissao, error: fetchError } = await supabase
+    .from("nfse_emissoes")
+    .select("status, ambiente, chave_acesso, repasse_lote_id")
+    .eq("id", id)
+    .single();
+  if (fetchError || !emissao) throw new Error("NF não encontrada.");
+  if (emissao.status !== "autorizado" || !emissao.chave_acesso) {
+    throw new Error("Só é possível cancelar uma NF já autorizada.");
+  }
+
+  const cMotivo = String(formData.get("cMotivo") ?? "") as CodigoMotivoCancelamento;
+  if (!["1", "2", "9"].includes(cMotivo)) throw new Error("Selecione o motivo do cancelamento.");
+  const xMotivo = String(formData.get("xMotivo") ?? "").trim();
+  if (xMotivo.length < 15 || xMotivo.length > 255) {
+    throw new Error("Descreva o motivo com 15 a 255 caracteres.");
+  }
+
+  const eventoXml = montarPedRegEventoCancelamentoXml({
+    chaveAcesso: emissao.chave_acesso,
+    ambiente: emissao.ambiente,
+    cMotivo,
+    xMotivo,
+  });
+  const eventoXmlAssinado = assinarPedRegEvento(eventoXml);
+
+  const env = nfseEnv();
+  if (emissao.ambiente === "producao" && !env.NFSE_PERMITIR_PRODUCAO) {
+    throw new Error("Cancelamento em produção real bloqueado: NFSE_PERMITIR_PRODUCAO não está ativo.");
+  }
+
+  const resultado = await enviarEvento(emissao.chave_acesso, eventoXmlAssinado, emissao.ambiente);
+  if (!resultado.registrado) {
+    throw new Error(resultado.motivoRejeicao);
+  }
+
+  const { error } = await supabase
+    .from("nfse_emissoes")
+    .update({
+      status: "cancelado",
+      evento_cancelamento_xml: resultado.eventoXml,
+      motivo_cancelamento: xMotivo,
+      cancelado_em: new Date().toISOString(),
+      cancelado_por: usuario.id,
+    })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+
+  // NF cancelada não cobre mais o repasse — volta pro ponto de partida
+  // (só se ainda estava "aguardando pagamento" por causa dessa NF).
+  if (emissao.repasse_lote_id) {
+    await supabase
+      .from("repasses_lotes")
+      .update({ status: "aguardando_nf" })
+      .eq("id", emissao.repasse_lote_id)
+      .eq("status", "aguardando_pagamento");
+  }
+
+  revalidatePath(`/notas-fiscais/${id}`);
+  if (emissao.repasse_lote_id) revalidatePath(`/repasses/${emissao.repasse_lote_id}`);
 }
