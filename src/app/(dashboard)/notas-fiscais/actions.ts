@@ -204,14 +204,51 @@ export async function transmitir(id: string) {
   }
 }
 
-/** Remove um rascunho ainda não assinado (nunca apaga nada já assinado/transmitido). */
-export async function cancelarRascunho(id: string) {
+/**
+ * Exclui uma emissão. Sempre permitido pra rascunho (nunca foi assinado) ou
+ * pra qualquer status em ambiente "restrita" (produção restrita não tem
+ * valor fiscal — mesmo uma NF "autorizada" lá é só teste). Bloqueado pra
+ * qualquer coisa já assinada/transmitida em "producao" real — aí é
+ * documento fiscal de verdade, não se apaga.
+ */
+export async function excluirEmissao(id: string) {
   await requireAdmin();
   const supabase = await createClient();
 
-  const { error } = await supabase.from("nfse_emissoes").delete().eq("id", id).eq("status", "rascunho");
+  const { data: emissao, error: fetchError } = await supabase
+    .from("nfse_emissoes")
+    .select("status, ambiente, repasse_lote_id")
+    .eq("id", id)
+    .single();
+  if (fetchError || !emissao) throw new Error("NF não encontrada.");
+
+  const podeExcluir = emissao.status === "rascunho" || emissao.ambiente === "restrita";
+  if (!podeExcluir) {
+    throw new Error("Essa NF já foi assinada/transmitida em produção real — não dá pra excluir.");
+  }
+
+  const { error } = await supabase.from("nfse_emissoes").delete().eq("id", id);
   if (error) throw new Error(error.message);
 
+  // Se essa emissão (de teste) tinha avançado o lote pra "aguardando
+  // pagamento", volta pra "aguardando NF" — só se não sobrar nenhuma outra
+  // emissão autorizada vinculada a esse mesmo lote.
+  if (emissao.status === "autorizado" && emissao.repasse_lote_id) {
+    const { data: outrasAutorizadas } = await supabase
+      .from("nfse_emissoes")
+      .select("id")
+      .eq("repasse_lote_id", emissao.repasse_lote_id)
+      .eq("status", "autorizado");
+    if (!outrasAutorizadas || outrasAutorizadas.length === 0) {
+      await supabase
+        .from("repasses_lotes")
+        .update({ status: "aguardando_nf" })
+        .eq("id", emissao.repasse_lote_id)
+        .eq("status", "aguardando_pagamento");
+    }
+  }
+
   revalidatePath("/notas-fiscais");
+  if (emissao.repasse_lote_id) revalidatePath(`/repasses/${emissao.repasse_lote_id}`);
   redirect("/notas-fiscais");
 }

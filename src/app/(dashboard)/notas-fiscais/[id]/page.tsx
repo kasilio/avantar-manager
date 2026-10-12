@@ -9,7 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/auth/get-current-usuario";
 import { fmtDate, fmtDateCurta, fmtMoney } from "@/lib/format";
 import { PRESTADOR, TOMADOR, SERVICO } from "@/lib/nfse/dados-fixos";
-import { assinarRascunho, cancelarRascunho } from "../actions";
+import { assinarRascunho, excluirEmissao } from "../actions";
 
 export default async function NfseRevisaoPage({ params }: { params: Promise<{ id: string }> }) {
   await requireAdmin();
@@ -152,15 +152,23 @@ export default async function NfseRevisaoPage({ params }: { params: Promise<{ id
           <form action={assinarRascunho.bind(null, id)}>
             <Button type="submit">Assinar</Button>
           </form>
-          <form action={cancelarRascunho.bind(null, id)}>
+          <form action={excluirEmissao.bind(null, id)}>
             <Button type="submit" variant="outline">
-              Cancelar rascunho
+              Excluir rascunho
             </Button>
           </form>
         </div>
       )}
 
       {emissao.status === "assinado" && <TransmitirNfseForm id={id} />}
+
+      {emissao.status !== "rascunho" && !ehProducao && (
+        <form action={excluirEmissao.bind(null, id)}>
+          <Button type="submit" variant="outline" size="sm" className="self-start">
+            Excluir (teste em produção restrita)
+          </Button>
+        </form>
+      )}
     </div>
   );
 }
