@@ -296,6 +296,7 @@ export type NfseEmissao = {
   erro_detalhe: string | null;
   payload_enviado: Record<string, unknown> | null;
   payload_resposta: Record<string, unknown> | null;
+  repasse_lote_id: string | null;
   criado_por: string | null;
   confirmado_por: string | null;
   confirmado_em: string | null;

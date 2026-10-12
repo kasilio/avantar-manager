@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { requireCurrentUsuario } from "@/lib/auth/get-current-usuario";
+import { requireCurrentUsuario, requireAdmin } from "@/lib/auth/get-current-usuario";
 import { repasseSchema } from "@/lib/validations/repasse";
 import { parseNfPdf } from "@/lib/import/parse-nf-pdf";
 import { fmtMoney } from "@/lib/format";
@@ -103,6 +103,45 @@ export async function anexarNf(loteId: string, formData: FormData) {
 
   revalidatePath("/repasses");
   revalidatePath(`/repasses/${loteId}`);
+}
+
+/** Exclui um lote de repasse importado por engano. Bloqueia se já tiver
+ * pagamento registrado ou NF anexada/emitida — nesses casos é histórico
+ * financeiro/fiscal real, não dá pra simplesmente apagar. Tentativas de NF
+ * que nunca viraram documento de verdade (rascunho/rejeitada/com erro) são
+ * limpas automaticamente antes de excluir o lote. */
+export async function excluirLote(loteId: string) {
+  await requireAdmin();
+  const supabase = await createClient();
+
+  const { data: lote, error: loteError } = await supabase
+    .from("repasses_lotes")
+    .select("status, nf_arquivo_base64")
+    .eq("id", loteId)
+    .single();
+  if (loteError || !lote) throw new Error("Lote não encontrado.");
+  if (lote.status === "pago") throw new Error("Esse lote já foi pago — não dá pra excluir.");
+  if (lote.nf_arquivo_base64) throw new Error("Esse lote já tem NF anexada — não dá pra excluir.");
+
+  await supabase
+    .from("nfse_emissoes")
+    .delete()
+    .eq("repasse_lote_id", loteId)
+    .in("status", ["rascunho", "rejeitado", "erro"]);
+
+  const { error } = await supabase.from("repasses_lotes").delete().eq("id", loteId);
+  if (error) {
+    throw new Error(
+      "Não foi possível excluir: esse lote ainda tem uma NF assinada ou já transmitida vinculada a ele.",
+    );
+  }
+
+  revalidatePath("/repasses");
+  revalidatePath("/notas-fiscais");
+  // Sem redirect() aqui de propósito: quem chama é um client component que
+  // precisa de confirm() antes, então envolve a chamada num try/catch — e
+  // redirect() lança um erro especial que esse catch acabaria engolindo
+  // como se fosse falha. Navegação fica por conta do chamador.
 }
 
 /** Ação rápida: registra o pagamento do lote inteiro e conclui o fluxo. */

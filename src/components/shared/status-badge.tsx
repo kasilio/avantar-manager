@@ -12,6 +12,12 @@ const STATUS_MAP: Record<string, { label: string; className: string }> = {
   aguardando_nf: { label: "Aguardando NF", className: "bg-warning/15 text-warning border-warning/30" },
   aguardando_pagamento: { label: "Aguardando pagamento", className: "bg-info/15 text-info border-info/30" },
   pago: { label: "🟢 Pago", className: "bg-success/15 text-success border-success/30" },
+  rascunho: { label: "Rascunho", className: "bg-muted text-muted-foreground border-border" },
+  assinado: { label: "Assinado", className: "bg-info/15 text-info border-info/30" },
+  enviando: { label: "Enviando", className: "bg-info/15 text-info border-info/30" },
+  autorizado: { label: "🟢 Autorizado", className: "bg-success/15 text-success border-success/30" },
+  rejeitado: { label: "🔴 Rejeitado", className: "bg-destructive/15 text-destructive border-destructive/30" },
+  erro: { label: "🔴 Erro", className: "bg-destructive/15 text-destructive border-destructive/30" },
 };
 
 export function StatusBadge({ status }: { status: string }) {

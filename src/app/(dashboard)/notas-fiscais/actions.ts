@@ -13,9 +13,14 @@ import { assinarDps } from "@/lib/nfse/assinatura";
 import { enviarDps } from "@/lib/nfse/client";
 
 /** Monta e salva o XML (sem assinar) de uma nova tentativa de emissão —
- * valor e competência sempre informados manualmente, nunca calculados. */
+ * valor vem sugerido do total do lote de repasse (editável) e competência é
+ * sempre informada manualmente. Toda NF corresponde a um lote de repasse já
+ * importado; `loteId` amarra os dois lados (ver repasses_lotes). */
 export async function criarRascunho(formData: FormData) {
   const usuario = await requireAdmin();
+  const loteId = String(formData.get("lote_id") ?? "").trim();
+  if (!loteId) throw new Error("Selecione o lote de repasse que essa NF cobre.");
+
   const parsed = nfseRascunhoSchema.safeParse({
     valor: formData.get("valor"),
     competencia: formData.get("competencia"),
@@ -25,6 +30,17 @@ export async function criarRascunho(formData: FormData) {
   }
 
   const supabase = await createClient();
+
+  const { data: lote, error: loteError } = await supabase
+    .from("repasses_lotes")
+    .select("status")
+    .eq("id", loteId)
+    .single();
+  if (loteError || !lote) throw new Error("Lote de repasse não encontrado.");
+  if (lote.status !== "aguardando_nf") {
+    throw new Error("Esse lote já tem NF em andamento ou já foi pago — não dá pra criar outro rascunho pra ele.");
+  }
+
   const ambiente = nfseEnv().NFSE_AMBIENTE;
   const numeroDps = await proximoNumeroDps(supabase, SERIE_DPS_PADRAO);
   const dpsXml = montarDpsXml({
@@ -51,6 +67,7 @@ export async function criarRascunho(formData: FormData) {
       erro_detalhe: null,
       payload_enviado: null,
       payload_resposta: null,
+      repasse_lote_id: loteId,
       criado_por: usuario.id,
       confirmado_por: null,
       confirmado_em: null,
@@ -61,8 +78,9 @@ export async function criarRascunho(formData: FormData) {
     .single();
   if (error) throw new Error(error.message);
 
-  revalidatePath("/financeiro/nfse");
-  redirect(`/financeiro/nfse/${criada.id}`);
+  revalidatePath("/notas-fiscais");
+  revalidatePath(`/repasses/${loteId}`);
+  redirect(`/notas-fiscais/${criada.id}`);
 }
 
 /** Assina o XML do rascunho com o certificado da empresa. */
@@ -87,7 +105,7 @@ export async function assinarRascunho(id: string) {
     .eq("id", id);
   if (error) throw new Error(error.message);
 
-  revalidatePath(`/financeiro/nfse/${id}`);
+  revalidatePath(`/notas-fiscais/${id}`);
 }
 
 /**
@@ -103,7 +121,7 @@ export async function transmitir(id: string) {
 
   const { data: emissao, error: fetchError } = await supabase
     .from("nfse_emissoes")
-    .select("status, ambiente, dps_xml_assinado")
+    .select("status, ambiente, dps_xml_assinado, repasse_lote_id")
     .eq("id", id)
     .single();
   if (fetchError || !emissao) throw new Error("NF não encontrada.");
@@ -143,6 +161,18 @@ export async function transmitir(id: string) {
       // só o nosso registro não refletir isso ainda, não motivo pra lançar
       // como se a transmissão tivesse falhado (evitaria um reenvio indevido).
       if (updError) console.error(`[nfse] falha ao salvar autorização da emissão ${id}`, updError);
+
+      // Mantém o fluxo de Repasses em sincronia: NF autorizada = pode seguir
+      // pro próximo passo (marcar como pago), igual o anexarNf() legado já
+      // faz. Só avança se ainda estiver em aguardando_nf — não sobrescreve
+      // um estado mais avançado (ex.: já pago por outro caminho).
+      if (emissao.repasse_lote_id) {
+        await supabase
+          .from("repasses_lotes")
+          .update({ status: "aguardando_pagamento" })
+          .eq("id", emissao.repasse_lote_id)
+          .eq("status", "aguardando_nf");
+      }
     } else {
       const { error: updError } = await supabase
         .from("nfse_emissoes")
@@ -166,7 +196,8 @@ export async function transmitir(id: string) {
     }
     throw err;
   } finally {
-    revalidatePath(`/financeiro/nfse/${id}`);
+    revalidatePath(`/notas-fiscais/${id}`);
+    if (emissao.repasse_lote_id) revalidatePath(`/repasses/${emissao.repasse_lote_id}`);
   }
 }
 
@@ -178,6 +209,6 @@ export async function cancelarRascunho(id: string) {
   const { error } = await supabase.from("nfse_emissoes").delete().eq("id", id).eq("status", "rascunho");
   if (error) throw new Error(error.message);
 
-  revalidatePath("/financeiro/nfse");
-  redirect("/financeiro/nfse");
+  revalidatePath("/notas-fiscais");
+  redirect("/notas-fiscais");
 }

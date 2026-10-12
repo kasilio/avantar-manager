@@ -5,7 +5,7 @@ import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { transmitir } from "@/app/(dashboard)/financeiro/nfse/actions";
+import { transmitir } from "@/app/(dashboard)/notas-fiscais/actions";
 
 export function TransmitirNfseForm({ id }: { id: string }) {
   const [confirmado, setConfirmado] = useState(false);

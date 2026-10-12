@@ -1,12 +1,13 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AlertTriangle, FileDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { TransmitirNfseForm } from "@/components/financeiro/transmitir-nfse-form";
+import { TransmitirNfseForm } from "@/components/notas-fiscais/transmitir-nfse-form";
 import { createClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/auth/get-current-usuario";
-import { fmtDate, fmtMoney } from "@/lib/format";
+import { fmtDate, fmtDateCurta, fmtMoney } from "@/lib/format";
 import { PRESTADOR, TOMADOR, SERVICO } from "@/lib/nfse/dados-fixos";
 import { assinarRascunho, cancelarRascunho } from "../actions";
 
@@ -17,6 +18,14 @@ export default async function NfseRevisaoPage({ params }: { params: Promise<{ id
 
   const { data: emissao } = await supabase.from("nfse_emissoes").select("*").eq("id", id).maybeSingle();
   if (!emissao) notFound();
+
+  const { data: lote } = emissao.repasse_lote_id
+    ? await supabase
+        .from("repasses_lotes")
+        .select("id, periodo_inicio, periodo_fim")
+        .eq("id", emissao.repasse_lote_id)
+        .maybeSingle()
+    : { data: null };
 
   const ehProducao = emissao.ambiente === "producao";
 
@@ -49,6 +58,15 @@ export default async function NfseRevisaoPage({ params }: { params: Promise<{ id
             <Campo label="Série / número DPS" valor={`${emissao.serie_dps} / ${emissao.numero_dps}`} />
             <Campo label="Status" valor={emissao.status} />
           </div>
+
+          {lote && (
+            <p className="text-sm text-muted-foreground">
+              Repasse vinculado:{" "}
+              <Link href={`/repasses/${lote.id}`} className="text-primary hover:underline">
+                {fmtDateCurta(lote.periodo_inicio)} à {fmtDateCurta(lote.periodo_fim)}
+              </Link>
+            </p>
+          )}
 
           <div className="grid gap-4 border-t border-border pt-4 sm:grid-cols-2">
             <div>
@@ -112,7 +130,7 @@ export default async function NfseRevisaoPage({ params }: { params: Promise<{ id
         <CardContent className="flex flex-col gap-3">
           {emissao.dps_xml_assinado && (
             <a
-              href={`/financeiro/nfse/${id}/xml`}
+              href={`/notas-fiscais/${id}/xml`}
               className="flex w-fit items-center gap-1.5 text-sm text-primary hover:underline"
             >
               <FileDown className="size-4" /> Baixar XML assinado

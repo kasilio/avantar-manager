@@ -6,12 +6,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { MoneyInput } from "@/components/shared/money-input";
+import { LinkButton } from "@/components/shared/link-button";
 import { LoteStepper } from "@/components/repasses/lote-stepper";
+import { ExcluirLoteButton } from "@/components/repasses/excluir-lote-button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { createClient } from "@/lib/supabase/server";
 import { requireCurrentUsuario } from "@/lib/auth/get-current-usuario";
 import { fmtDate, fmtDateCurta, fmtMoney, fmtPct, today } from "@/lib/format";
-import type { RepasseLote } from "@/types/database";
+import type { NfseEmissao, RepasseLote } from "@/types/database";
 import { anexarNf, registrarPagamento } from "../actions";
 
 export default async function RepasseLoteDetalhePage({
@@ -24,16 +26,25 @@ export default async function RepasseLoteDetalhePage({
   const isAdmin = usuario.papel === "admin";
   const supabase = await createClient();
 
-  const [{ data: loteRaw }, { data: linhasRaw }] = await Promise.all([
+  const [{ data: loteRaw }, { data: linhasRaw }, { data: emissoesRaw }] = await Promise.all([
     supabase.from("repasses_lotes").select("*").eq("id", id).single(),
     supabase
       .from("repasses")
       .select("*, producoes(num_apolice, comissao_pct, clientes(nome), tipos_produto(nome))")
       .eq("lote_id", id)
       .order("periodo", { ascending: true }),
+    supabase
+      .from("nfse_emissoes")
+      .select("id, status, numero_nfse")
+      .eq("repasse_lote_id", id)
+      .order("created_at", { ascending: false }),
   ]);
   const lote = loteRaw as RepasseLote | null;
   if (!lote) notFound();
+
+  const emissoes = (emissoesRaw ?? []) as Pick<NfseEmissao, "id" | "status" | "numero_nfse">[];
+  const ultimaEmissao = emissoes[0] ?? null;
+  const temNfAutorizada = emissoes.some((e) => e.status === "autorizado");
 
   const linhas = (linhasRaw ?? []) as unknown as Array<{
     id: string;
@@ -71,8 +82,23 @@ export default async function RepasseLoteDetalhePage({
         <div className="flex items-center gap-2">
           <span className="font-medium">{fmtMoney(isAdmin ? lote.comissao_bruta_total : meuFaturado)}</span>
           <StatusBadge status={lote.status} />
+          {isAdmin && <ExcluirLoteButton loteId={id} />}
         </div>
       </div>
+
+      {ultimaEmissao && (
+        <Card>
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4 text-sm">
+            <span>
+              NF ({ultimaEmissao.numero_nfse ? `nº ${ultimaEmissao.numero_nfse}` : "emissão em andamento"}):{" "}
+              <StatusBadge status={ultimaEmissao.status} />
+            </span>
+            <Link href={`/notas-fiscais/${ultimaEmissao.id}`} className="text-primary hover:underline">
+              Ver NF
+            </Link>
+          </CardContent>
+        </Card>
+      )}
 
       {!isAdmin && (
         <Card className="border-success/30 bg-success/5">
@@ -87,6 +113,21 @@ export default async function RepasseLoteDetalhePage({
 
       {isAdmin && lote.status !== "pago" && (
         <div className="grid gap-4 sm:grid-cols-2">
+          {lote.status === "aguardando_nf" && !temNfAutorizada && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">✍️ Emitir NF</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3">
+                <p className="text-xs text-muted-foreground">
+                  Monta, assina e transmite a NFS-e direto pelo sistema, com o certificado da empresa.
+                </p>
+                <LinkButton href={`/notas-fiscais/nova?loteId=${id}`} size="sm" className="self-start">
+                  Emitir NF
+                </LinkButton>
+              </CardContent>
+            </Card>
+          )}
           {lote.status === "aguardando_nf" && (
             <Card>
               <CardHeader>
