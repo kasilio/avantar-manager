@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TransmitirNfseForm } from "@/components/notas-fiscais/transmitir-nfse-form";
 import { CancelarNfseForm } from "@/components/notas-fiscais/cancelar-nfse-form";
+import { CopiarMensagemButton } from "@/components/shared/copiar-mensagem-button";
 import { createClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/auth/get-current-usuario";
 import { fmtDate, fmtDateCurta, fmtMoney } from "@/lib/format";
@@ -130,6 +131,7 @@ export default async function NfseRevisaoPage({ params }: { params: Promise<{ id
             </p>
             {emissao.chave_acesso && (
               <div className="flex flex-col gap-1">
+                <CopiarMensagemButton mensagem={emissao.chave_acesso} label="Copiar chave de acesso" />
                 <a
                   href="https://www.nfse.gov.br/ConsultaPublica"
                   target="_blank"

@@ -32,7 +32,7 @@ async function copiarTexto(texto: string): Promise<boolean> {
   }
 }
 
-export function CopiarMensagemButton({ mensagem }: { mensagem: string }) {
+export function CopiarMensagemButton({ mensagem, label = "Copiar mensagem" }: { mensagem: string; label?: string }) {
   const [estado, setEstado] = useState<"idle" | "copiado" | "erro">("idle");
 
   return (
@@ -54,7 +54,7 @@ export function CopiarMensagemButton({ mensagem }: { mensagem: string }) {
       ) : (
         <Copy className="size-3.5" />
       )}
-      {estado === "copiado" ? "Copiado!" : estado === "erro" ? "Não foi possível copiar" : "Copiar mensagem"}
+      {estado === "copiado" ? "Copiado!" : estado === "erro" ? "Não foi possível copiar" : label}
     </button>
   );
 }
