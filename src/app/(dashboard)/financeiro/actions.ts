@@ -162,6 +162,12 @@ export async function parseDas(formData: FormData) {
 /** Fecha o mês: só permite se não sobrar nenhum lote de repasse daquele mês
  * ainda pendente de pagamento (senão lista quais).
  *
+ * Um lote "pertence" ao mês em que seu período TERMINA (periodo_fim), não a
+ * qualquer mês que ele apenas toque — os ciclos de repasse não seguem o mês
+ * calendário (ex.: um lote de 11/09 a 09/10 é faturado com competência de
+ * outubro, não de setembro), então um lote assim não deve travar o
+ * fechamento do mês anterior.
+ *
  * Retorna `{ error }` em vez de lançar pra esse caso (validação de negócio
  * esperada, não um bug): em produção, erros lançados numa Server Action não
  * chegam ao cliente com a mensagem original (o form mostrava "Minified React
@@ -176,8 +182,8 @@ export async function fecharMes(periodo: string, formData: FormData): Promise<{ 
   const { data: lotesDoMes } = await supabase
     .from("repasses_lotes")
     .select("id, periodo_inicio, periodo_fim, status")
-    .lte("periodo_inicio", fimMes)
-    .gte("periodo_fim", inicioMes);
+    .gte("periodo_fim", inicioMes)
+    .lte("periodo_fim", fimMes);
   const pendentes = (lotesDoMes ?? []).filter((l) => l.status !== "pago");
   if (pendentes.length > 0) {
     return {
