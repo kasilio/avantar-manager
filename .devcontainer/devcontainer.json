@@ -1,0 +1,6 @@
+{
+  "name": "Avantar Manager",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:24",
+  "postCreateCommand": "npm install",
+  "forwardPorts": [3000]
+}
