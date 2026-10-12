@@ -54,8 +54,12 @@ export function fmtPct(value: number | null | undefined): string {
   return `${Number(value).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`;
 }
 
+/** "Hoje" na data civil de Brasília (UTC-3, sem horário de verão desde
+ * 2019), não em UTC puro — o servidor roda em UTC, então sem esse ajuste
+ * "hoje" vira amanhã sempre que passa da meia-noite em UTC mas ainda não
+ * passou da meia-noite em Brasília (todo dia, entre ~21h e meia-noite). */
 export function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
 export function periodoAtual(): string {

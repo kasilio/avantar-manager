@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { MoneyInput } from "@/components/shared/money-input";
 import { createClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/auth/get-current-usuario";
-import { fmtDateCurta, fmtMoney } from "@/lib/format";
+import { fmtDateCurta, fmtMoney, today } from "@/lib/format";
 import { criarRascunho } from "../actions";
 
 export default async function NovaNfsePage({
@@ -61,7 +61,7 @@ export default async function NovaNfsePage({
     .maybeSingle();
   if (!lote || lote.status !== "aguardando_nf") notFound();
 
-  const hoje = new Date().toISOString().slice(0, 10);
+  const hoje = today();
 
   return (
     <div className="flex max-w-md flex-col gap-6">
