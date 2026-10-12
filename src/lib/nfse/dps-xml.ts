@@ -18,6 +18,11 @@ export type DadosRascunhoDps = {
   valor: number;
   competencia: string; // "AAAA-MM-DD"
   ambiente: "restrita" | "producao";
+  /** % aproximado do total de tributos do Simples Nacional (totTrib/pTotTribSN) —
+   * obrigatório pro optante ME/EPP (erro E0712 se omitido ou se usar
+   * indTotTrib). Vem de settings.aliquota_simples (mesma estimativa já usada
+   * no DRE de Financeiro). */
+  aliquotaSimplesPct: number;
 };
 
 function formatarDataHoraUtcMenos3(data: Date): string {
@@ -31,6 +36,11 @@ function formatarValor(valor: number): string {
   // TSDec15V2: até 15 dígitos + 2 casas decimais, separador "." — sem
   // milhar, sem zero à esquerda (exceto o próprio "0").
   return valor.toFixed(2);
+}
+
+function formatarPercentual(pct: number): string {
+  // TSDec2V2: 1-2 dígitos inteiros + 2 casas decimais.
+  return pct.toFixed(2);
 }
 
 /**
@@ -122,11 +132,12 @@ export function montarDpsXml(dados: DadosRascunhoDps): string {
           // NÃO participa do sistema nacional (ver TCTribMunicipal no XSD).
         .up()
         .ele("totTrib")
-          // indTotTrib=0: "Não informar nenhum valor estimado para os
-          // Tributos (Decreto 8.264/2014)" — opção mais simples do
-          // xs:choice, evita estimar tributos federais/estaduais/municipais
-          // que não temos como calcular aqui.
-          .ele("indTotTrib").txt("0").up()
+          // pTotTribSN (não indTotTrib): confirmado contra rejeição real
+          // (E0712) que optante ME/EPP não pode usar o indicador "não
+          // informar" — precisa do percentual aproximado do Simples
+          // Nacional. Usa a mesma estimativa (settings.aliquota_simples)
+          // já exibida no DRE de Financeiro.
+          .ele("pTotTribSN").txt(formatarPercentual(dados.aliquotaSimplesPct)).up()
         .up()
       .up()
     .up()

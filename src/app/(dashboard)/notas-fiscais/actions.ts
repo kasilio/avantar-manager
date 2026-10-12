@@ -41,6 +41,8 @@ export async function criarRascunho(formData: FormData) {
     throw new Error("Esse lote já tem NF em andamento ou já foi pago — não dá pra criar outro rascunho pra ele.");
   }
 
+  const { data: settings } = await supabase.from("settings").select("aliquota_simples").eq("id", true).single();
+
   const ambiente = nfseEnv().NFSE_AMBIENTE;
   const numeroDps = await proximoNumeroDps(supabase, SERIE_DPS_PADRAO);
   const dpsXml = montarDpsXml({
@@ -48,6 +50,7 @@ export async function criarRascunho(formData: FormData) {
     valor: parsed.data.valor,
     competencia: parsed.data.competencia,
     ambiente,
+    aliquotaSimplesPct: Number(settings?.aliquota_simples ?? 6),
   });
 
   const { data: criada, error } = await supabase
