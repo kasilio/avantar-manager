@@ -276,6 +276,33 @@ export type FechamentoMensal = {
   updated_at: string;
 };
 
+export type StatusAcertoComissao = "rascunho" | "enviado" | "confirmado" | "pago";
+
+export type ComissaoAcerto = {
+  id: string;
+  lote_id: string;
+  vendedor_id: string;
+  status: StatusAcertoComissao;
+  valor_total: number;
+  enviado_em: string | null;
+  confirmado_em: string | null;
+  confirmado_por: string | null;
+  pago_em: string | null;
+  data_pagamento: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ComissaoAcertoItem = {
+  id: string;
+  acerto_id: string;
+  repasse_id: string;
+  comissao_bruta: number;
+  comissao_pct: number;
+  valor_comissao: number;
+  created_at: string;
+};
+
 export type AmbienteNfse = "restrita" | "producao";
 export type StatusNfseEmissao = "rascunho" | "assinado" | "enviando" | "autorizado" | "rejeitado" | "erro" | "cancelado";
 
@@ -341,6 +368,8 @@ export type Database = {
       metas_mensais: TableDef<MetaMensal, Omit<MetaMensal, "created_at" | "updated_at" | "gerado_automaticamente"> & Partial<Pick<MetaMensal, "gerado_automaticamente">>>;
       fechamentos_mensais: TableDef<FechamentoMensal, Omit<FechamentoMensal, "created_at" | "updated_at">>;
       nfse_emissoes: TableDef<NfseEmissao, Omit<NfseEmissao, "id" | "created_at" | "updated_at" | "serie_dps" | "status"> & Partial<Pick<NfseEmissao, "serie_dps" | "status">>>;
+      comissoes_acertos: TableDef<ComissaoAcerto, Omit<ComissaoAcerto, "id" | "created_at" | "updated_at" | "status" | "valor_total"> & Partial<Pick<ComissaoAcerto, "status" | "valor_total">>>;
+      comissoes_acertos_itens: TableDef<ComissaoAcertoItem, Omit<ComissaoAcertoItem, "id" | "created_at">>;
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

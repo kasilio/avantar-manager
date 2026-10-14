@@ -13,6 +13,8 @@ const STATUS_MAP: Record<string, { label: string; className: string }> = {
   aguardando_pagamento: { label: "Aguardando pagamento", className: "bg-info/15 text-info border-info/30" },
   pago: { label: "🟢 Pago", className: "bg-success/15 text-success border-success/30" },
   rascunho: { label: "Rascunho", className: "bg-muted text-muted-foreground border-border" },
+  enviado: { label: "Aguardando confirmação", className: "bg-warning/15 text-warning border-warning/30" },
+  confirmado: { label: "🟢 Confirmado", className: "bg-success/15 text-success border-success/30" },
   assinado: { label: "Assinado", className: "bg-info/15 text-info border-info/30" },
   enviando: { label: "Enviando", className: "bg-info/15 text-info border-info/30" },
   autorizado: { label: "🟢 Autorizado", className: "bg-success/15 text-success border-success/30" },

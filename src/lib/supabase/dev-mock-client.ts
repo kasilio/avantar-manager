@@ -279,6 +279,8 @@ function seedStore(): Store {
     metas_mensais: [],
     fechamentos_mensais: [],
     seguradoras_contatos: [],
+    comissoes_acertos: [],
+    comissoes_acertos_itens: [],
   };
 
   // Backfill do fluxo de relacionamento pras produções do seed (o trigger só
@@ -303,7 +305,84 @@ function seedStore(): Store {
     return gerarFollowupsRows(p.id as string, base, iso(now));
   });
 
+  // Simula o trigger `gerar_acertos_comissao()` (migration 0022) pros lotes
+  // já seedados como "pago" — como o mock não roda triggers de Postgres, sem
+  // isso os acertos de comissão só apareceriam pra lotes marcados como pago
+  // depois do seed (ver o `update` de MockQueryBuilder). Hoje os `comissao_pct`
+  // do seed são todos null, então isso não gera linha nenhuma ainda — fica
+  // pronto pra quando um vendedor tiver % de comissão configurado.
+  const lotesSeed = result.repasses_lotes as Row[];
+  const repassesSeed = result.repasses as Row[];
+  for (const lote of lotesSeed) {
+    if (lote.status !== "pago") continue;
+    const { acertos, itens } = gerarAcertosParaLote(lote.id as string, repassesSeed, producoesSeed, iso(now), result.comissoes_acertos as Row[]);
+    (result.comissoes_acertos as Row[]).push(...acertos);
+    (result.comissoes_acertos_itens as Row[]).push(...itens);
+  }
+
   return result;
+}
+
+/** Simula o trigger `gerar_acertos_comissao()` (supabase/migrations/
+ * 0022_comissoes_acertos.sql) pra um lote que acabou de virar "pago": um
+ * acerto por vendedor com comissao_pct configurado, com um item por repasse
+ * dele dentro desse lote. `acertosExistentes` reproduz a constraint
+ * `unique (lote_id, vendedor_id)` da migration — sem isso, re-disparar o
+ * "trigger" pro mesmo lote (ex. alguém voltando o status e pagando de novo)
+ * duplicaria o acerto em vez de dar o mesmo erro que o Postgres real daria. */
+function gerarAcertosParaLote(loteId: string, repasses: Row[], producoes: Row[], now: string, acertosExistentes: Row[] = []): { acertos: Row[]; itens: Row[] } {
+  const vendedoresJaAcertados = new Set(
+    acertosExistentes.filter((a) => a.lote_id === loteId).map((a) => a.vendedor_id as string),
+  );
+  const linhasPorVendedor = new Map<string, Row[]>();
+  for (const r of repasses) {
+    if (r.lote_id !== loteId) continue;
+    const prod = producoes.find((p) => p.id === r.producao_id);
+    const vendedorId = prod?.vendedor_id as string | null | undefined;
+    const pct = prod?.comissao_pct as number | null | undefined;
+    if (!prod || !vendedorId || pct == null || pct <= 0 || vendedoresJaAcertados.has(vendedorId)) continue;
+    const lista = linhasPorVendedor.get(vendedorId) ?? [];
+    lista.push(r);
+    linhasPorVendedor.set(vendedorId, lista);
+  }
+
+  const acertos: Row[] = [];
+  const itens: Row[] = [];
+  for (const [vendedorId, linhas] of linhasPorVendedor) {
+    const acertoId = nextId();
+    let total = 0;
+    for (const r of linhas) {
+      const prod = producoes.find((p) => p.id === r.producao_id)!;
+      const pct = Number(prod.comissao_pct ?? 0);
+      const bruta = Number(r.comissao_bruta ?? 0);
+      const valor = Math.round(((bruta * pct) / 100) * 100) / 100;
+      total += valor;
+      itens.push({
+        id: nextId(),
+        acerto_id: acertoId,
+        repasse_id: r.id,
+        comissao_bruta: bruta,
+        comissao_pct: pct,
+        valor_comissao: valor,
+        created_at: now,
+      });
+    }
+    acertos.push({
+      id: acertoId,
+      lote_id: loteId,
+      vendedor_id: vendedorId,
+      status: "rascunho",
+      valor_total: Math.round(total * 100) / 100,
+      enviado_em: null,
+      confirmado_em: null,
+      confirmado_por: null,
+      pago_em: null,
+      data_pagamento: null,
+      created_at: now,
+      updated_at: now,
+    });
+  }
+  return { acertos, itens };
 }
 
 /** Transporte tem ramos que costumam sair em mais de uma produção pro mesmo
@@ -352,6 +431,7 @@ const FK_COLUMN_BY_TABLE: Record<string, string> = {
   seguradoras: "seguradora_id",
   repasses_lotes: "lote_id",
   usuarios: "vendedor_id",
+  repasses: "repasse_id",
 };
 
 interface EmbedSpec {
@@ -544,15 +624,32 @@ class MockQueryBuilder implements PromiseLike<MockResult> {
 
     if (this.mode === "update") {
       const updated: Row[] = [];
+      const lotesPagos: Row[] = [];
       const nextRows = rows.map((row) => {
         if (this.filters.every((f) => f(row))) {
-          const merged = { ...row, ...this.payload, updated_at: now };
+          const merged = { ...row, ...(this.payload as Row), updated_at: now } as Row;
           updated.push(merged);
+          if (this.table === "repasses_lotes" && merged.status === "pago" && row.status !== "pago") {
+            lotesPagos.push(merged);
+          }
           return merged;
         }
         return row;
       });
       store[this.table] = nextRows;
+      // Simula o trigger `gerar_acertos_comissao()` (migration 0022) — ver
+      // gerarAcertosParaLote acima.
+      if (lotesPagos.length > 0) {
+        const repassesAll = (store["repasses"] ?? []) as Row[];
+        const producoesAll = (store["producoes"] ?? []) as Row[];
+        const acertosStore = (store["comissoes_acertos"] ?? (store["comissoes_acertos"] = [])) as Row[];
+        const itensStore = (store["comissoes_acertos_itens"] ?? (store["comissoes_acertos_itens"] = [])) as Row[];
+        for (const lote of lotesPagos) {
+          const { acertos, itens } = gerarAcertosParaLote(lote.id as string, repassesAll, producoesAll, now, acertosStore);
+          acertosStore.push(...acertos);
+          itensStore.push(...itens);
+        }
+      }
       return { data: this.wantSingle || this.wantMaybeSingle ? (updated[0] ?? null) : updated, error: null, count: null };
     }
 
