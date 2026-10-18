@@ -3,22 +3,6 @@ import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { maskCNPJ } from "@/lib/masks";
 
-/** Normaliza um celular brasileiro pra E.164 (+55DDD9NNNNNNNN), mesmo
- * formato de src/lib/whatsapp/phone.ts — duplicado aqui (em vez de
- * importado) pra esta rota não depender da integração de WhatsApp, que
- * ainda não foi commitada. */
-function normalizePhoneE164(raw: string): string | null {
-  const digits = raw.replace(/\D/g, "");
-  if (!digits) return null;
-  if ((digits.length === 12 || digits.length === 13) && digits.startsWith("55")) {
-    return `+${digits}`;
-  }
-  if (digits.length === 10 || digits.length === 11) {
-    return `+55${digits}`;
-  }
-  return null;
-}
-
 /**
  * Recebe o lead do formulário da landing page (public/cargas-frota.html) e
  * lança direto no CRM: cliente (prospect) + contato + prospecção na coluna
@@ -139,14 +123,13 @@ export async function POST(request: Request) {
     empresaNome = razaoSocial.trim();
   }
 
-  const whatsappE164 = normalizePhoneE164(celular);
   const nomeContato = responsavel.trim() || "Responsável (a confirmar)";
   let contatoId = contatoIdRecebido ?? null;
 
   if (contatoId) {
     await supabase
       .from("clientes_contatos")
-      .update({ nome: nomeContato, whatsapp: celular, whatsapp_e164: whatsappE164 })
+      .update({ nome: nomeContato, whatsapp: celular })
       .eq("id", contatoId);
   } else {
     const { data: contato } = await supabase
@@ -156,7 +139,6 @@ export async function POST(request: Request) {
         nome: nomeContato,
         cargo: null,
         whatsapp: celular,
-        whatsapp_e164: whatsappE164,
         email: null,
         aniversario: null,
       })
