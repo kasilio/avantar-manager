@@ -106,13 +106,19 @@ export default async function DashboardPage({
   // mesmo período, ponderado pelo comissao_pct de cada produção.
   const transporteVendedorPorPeriodo = new Map<string, number>();
   for (const r of allRows) {
-    if (r.periodo >= atual) continue; // equivalente ao antigo .lt("periodo", atual)
-    if (!r.producoes?.tipos_produto?.nome?.toUpperCase().includes("TRANSPORTE")) continue;
     if (r.repasses_lotes?.status !== "pago") continue; // repasse só conta como recebido de fato quando o lote foi pago
+    // Mês de competência do pagamento é o mês em que o lote termina
+    // (periodo_fim), não o mês tageado em cada repasse individual (que vem
+    // do início do relatório) — mesmo critério usado em todo o resto desta
+    // página pra "pago", senão um lote pago em outubro mas cujo relatório
+    // começou em setembro era contado como receita de setembro.
+    const mesCompetencia = r.repasses_lotes.periodo_fim?.slice(0, 7) ?? r.periodo;
+    if (mesCompetencia >= atual) continue; // equivalente ao antigo .lt("periodo", atual)
+    if (!r.producoes?.tipos_produto?.nome?.toUpperCase().includes("TRANSPORTE")) continue;
     const recebido = Number(r.comissao_bruta ?? 0);
-    transportePorPeriodo.set(r.periodo, (transportePorPeriodo.get(r.periodo) ?? 0) + recebido);
+    transportePorPeriodo.set(mesCompetencia, (transportePorPeriodo.get(mesCompetencia) ?? 0) + recebido);
     const pct = Number(r.producoes?.comissao_pct ?? 0) / 100;
-    transporteVendedorPorPeriodo.set(r.periodo, (transporteVendedorPorPeriodo.get(r.periodo) ?? 0) + recebido * pct);
+    transporteVendedorPorPeriodo.set(mesCompetencia, (transporteVendedorPorPeriodo.get(mesCompetencia) ?? 0) + recebido * pct);
   }
   const mesesTransporteComComissao = [...transportePorPeriodo.keys()].filter((k) => (transportePorPeriodo.get(k) ?? 0) > 0);
   const previsaoTransporte = mesesTransporteComComissao.length > 0
@@ -139,7 +145,10 @@ export default async function DashboardPage({
     for (const r of allRows) {
       const bruto = Number(r.comissao_bruta ?? 0);
       const pct = Number(r.producoes?.comissao_pct ?? 0) / 100;
-      if (r.periodo === periodo && r.repasses_lotes?.status === "pago") {
+      // "Pago" também bucketa pelo mês em que o lote termina (periodo_fim),
+      // não pelo r.periodo tageado em cada repasse — mesmo critério do
+      // "aguardando" logo abaixo e do fecharMes().
+      if (r.repasses_lotes?.status === "pago" && (r.repasses_lotes.periodo_fim?.slice(0, 7) ?? r.periodo) === periodo) {
         comissaoBruta += bruto;
         suaComissao += bruto * pct;
       }
@@ -175,13 +184,14 @@ export default async function DashboardPage({
     if (r.repasses_lotes?.status !== "pago") continue;
     const bruto = Number(r.comissao_bruta ?? 0);
     const pct = Number(r.producoes?.comissao_pct ?? 0) / 100;
-    if (faturamentoPorMes.has(r.periodo)) {
-      faturamentoPorMes.set(r.periodo, (faturamentoPorMes.get(r.periodo) ?? 0) + bruto);
-      comissaoPorMes.set(r.periodo, (comissaoPorMes.get(r.periodo) ?? 0) + bruto * pct);
+    const mesCompetencia = r.repasses_lotes.periodo_fim?.slice(0, 7) ?? r.periodo;
+    if (faturamentoPorMes.has(mesCompetencia)) {
+      faturamentoPorMes.set(mesCompetencia, (faturamentoPorMes.get(mesCompetencia) ?? 0) + bruto);
+      comissaoPorMes.set(mesCompetencia, (comissaoPorMes.get(mesCompetencia) ?? 0) + bruto * pct);
     }
     faturamentoTotal += bruto;
     comissaoTotal += bruto * pct;
-    if (r.periodo.startsWith(anoAtual)) {
+    if (mesCompetencia.startsWith(anoAtual)) {
       faturamentoAno += bruto;
       comissaoAno += bruto * pct;
     }

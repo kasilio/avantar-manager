@@ -29,8 +29,7 @@ async function FinanceiroVendedor({ supabase, periodo }: { supabase: SupabaseSer
 
   const { data: repassesRaw } = await supabase
     .from("repasses")
-    .select("periodo, comissao_bruta, producoes(comissao_pct), repasses_lotes(status, periodo_fim)")
-    .gte("periodo", meses[0]);
+    .select("periodo, comissao_bruta, producoes(comissao_pct), repasses_lotes(status, periodo_fim)");
   const rows = (repassesRaw ?? []) as unknown as Array<{
     periodo: string;
     comissao_bruta: number | null;
@@ -43,17 +42,20 @@ async function FinanceiroVendedor({ supabase, periodo }: { supabase: SupabaseSer
   // Já faturado (NF emitida e autorizada) mas ainda sem pagamento confirmado
   // — o lote "pertence" ao mês em que seu período termina (periodo_fim), não
   // ao mês tageado em cada repasse individual, mesmo critério do fecharMes()
-  // (ver financeiro/actions.ts) e da Visão Geral.
+  // (ver financeiro/actions.ts) e da Visão Geral. "Pago" segue o mesmo
+  // critério — senão um lote pago em outubro mas cujo relatório começou em
+  // setembro aparecia como recebido em setembro.
   let aguardandoFaturadoMes = 0;
   let aguardandoComissaoMes = 0;
   for (const r of rows) {
-    if (!faturadoPorMes.has(r.periodo)) continue;
+    const mesCompetencia = r.repasses_lotes?.periodo_fim?.slice(0, 7) ?? r.periodo;
     const bruto = Number(r.comissao_bruta ?? 0);
     const pct = Number(r.producoes?.comissao_pct ?? 0) / 100;
     if (r.repasses_lotes?.status === "pago") {
-      faturadoPorMes.set(r.periodo, (faturadoPorMes.get(r.periodo) ?? 0) + bruto);
-      comissaoPorMes.set(r.periodo, (comissaoPorMes.get(r.periodo) ?? 0) + bruto * pct);
-    } else if (r.repasses_lotes?.status === "aguardando_pagamento" && r.repasses_lotes.periodo_fim?.slice(0, 7) === periodo) {
+      if (!faturadoPorMes.has(mesCompetencia)) continue;
+      faturadoPorMes.set(mesCompetencia, (faturadoPorMes.get(mesCompetencia) ?? 0) + bruto);
+      comissaoPorMes.set(mesCompetencia, (comissaoPorMes.get(mesCompetencia) ?? 0) + bruto * pct);
+    } else if (r.repasses_lotes?.status === "aguardando_pagamento" && mesCompetencia === periodo) {
       aguardandoFaturadoMes += bruto;
       aguardandoComissaoMes += bruto * pct;
     }
@@ -178,7 +180,7 @@ export default async function FinanceiroPage({
   const [{ data: repasses }, { data: despesas }, { data: pagamentos }, { data: settingsRow }, { data: fechamentoRow }, { data: historicoValores }, { data: lotesAguardandoRaw }] = await Promise.all([
     modoIntervalo || modoTudo
       ? supabase.from("repasses").select("*, producoes(comissao_pct), repasses_lotes(status, data_pagamento)")
-      : supabase.from("repasses").select("*, producoes(comissao_pct), repasses_lotes(status)").eq("periodo", periodo),
+      : supabase.from("repasses").select("*, producoes(comissao_pct), repasses_lotes(status, periodo_fim)"),
     supabase.from("despesas").select("*").eq("ativa", true).order("descricao"),
     modoIntervalo || modoTudo
       ? Promise.resolve({ data: [] as { despesa_id: string }[] })
@@ -211,14 +213,20 @@ export default async function FinanceiroPage({
   const rowsRaw = (repasses ?? []) as unknown as Array<{
     comissao_bruta: number | null;
     producoes: { comissao_pct: number | null } | null;
-    repasses_lotes: { status: string; data_pagamento?: string | null } | null;
+    repasses_lotes: { status: string; data_pagamento?: string | null; periodo_fim?: string | null } | null;
   }>;
+  // Mês de competência de um repasse pago é o mês em que o lote termina
+  // (periodo_fim), não o mês do relatório tageado em repasses.periodo — mesmo
+  // critério do fecharMes() (ver ./actions.ts) e da Visão Geral, senão um lote
+  // pago em outubro mas cujo relatório começou em setembro não aparecia aqui.
   const rows = modoIntervalo
     ? rowsRaw.filter((r) => {
         const dp = r.repasses_lotes?.data_pagamento;
         return dp && dp >= inicio! && dp <= fim!;
       })
-    : rowsRaw;
+    : modoTudo
+      ? rowsRaw
+      : rowsRaw.filter((r) => r.repasses_lotes?.periodo_fim?.slice(0, 7) === periodo);
 
   const comissaoBruta = rows.reduce((sum, r) => sum + (r.repasses_lotes?.status === "pago" ? Number(r.comissao_bruta ?? 0) : 0), 0);
   const aguardandoBruta = (lotesAguardandoRaw ?? []).reduce((sum, l) => sum + Number(l.comissao_bruta_total ?? 0), 0);
