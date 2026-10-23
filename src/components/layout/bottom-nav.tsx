@@ -62,12 +62,31 @@ export function BottomNav() {
           <div className="grid grid-cols-3 gap-3 px-4 pb-6">
             {rest.map((item) => {
               const Icon = item.icon;
+              const className =
+                "flex flex-col items-center justify-center gap-2 rounded-lg border border-border bg-card p-4 text-center text-xs font-medium text-foreground";
+
+              if (item.external) {
+                return (
+                  <a
+                    key={item.href}
+                    href={item.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setOpen(false)}
+                    className={className}
+                  >
+                    <Icon className="size-5 text-primary" />
+                    {item.label}
+                  </a>
+                );
+              }
+
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   onClick={() => setOpen(false)}
-                  className="flex flex-col items-center justify-center gap-2 rounded-lg border border-border bg-card p-4 text-center text-xs font-medium text-foreground"
+                  className={className}
                 >
                   <Icon className="size-5 text-primary" />
                   {item.label}

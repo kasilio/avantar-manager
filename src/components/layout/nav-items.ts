@@ -12,6 +12,7 @@ import {
   Landmark,
   Tags,
   Users,
+  Globe,
 } from "lucide-react";
 
 export interface NavItem {
@@ -21,6 +22,8 @@ export interface NavItem {
   adminOnly?: boolean;
   /** Aparece nas 4 abas fixas da bottom nav mobile (o resto vai pro drawer "Mais"). */
   mobilePrimary?: boolean;
+  /** Link público fora do app (ex: landing page estática em /public) — abre em nova aba, sem navegação client-side. */
+  external?: boolean;
 }
 
 export const NAV_ITEMS: NavItem[] = [
@@ -36,4 +39,5 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/seguradoras", label: "Seguradoras", icon: Landmark, adminOnly: true },
   { href: "/tipos-produto", label: "Tipos de Produto", icon: Tags, adminOnly: true },
   { href: "/usuarios", label: "Usuários", icon: Users, adminOnly: true },
+  { href: "/cargas-frota.html", label: "Landing Page", icon: Globe, external: true },
 ];

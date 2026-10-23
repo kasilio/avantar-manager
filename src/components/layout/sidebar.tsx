@@ -33,17 +33,24 @@ export function Sidebar() {
         {items.map((item) => {
           const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
           const Icon = item.icon;
+          const className = cn(
+            "flex items-center gap-2.5 rounded-md border-l-2 border-transparent px-3 py-2 text-sm font-medium transition-colors",
+            isActive
+              ? "border-l-sidebar-primary bg-sidebar-accent text-sidebar-accent-foreground"
+              : "text-sidebar-foreground/75 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+          );
+
+          if (item.external) {
+            return (
+              <a key={item.href} href={item.href} target="_blank" rel="noopener noreferrer" className={className}>
+                <Icon className="size-4 shrink-0" />
+                {item.label}
+              </a>
+            );
+          }
+
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-2.5 rounded-md border-l-2 border-transparent px-3 py-2 text-sm font-medium transition-colors",
-                isActive
-                  ? "border-l-sidebar-primary bg-sidebar-accent text-sidebar-accent-foreground"
-                  : "text-sidebar-foreground/75 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
-              )}
-            >
+            <Link key={item.href} href={item.href} className={className}>
               <Icon className="size-4 shrink-0" />
               {item.label}
             </Link>
