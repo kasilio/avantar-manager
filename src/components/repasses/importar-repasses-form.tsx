@@ -11,10 +11,21 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { fmtMoney } from "@/lib/format";
 import { previewImportacao, confirmarImportacao } from "@/app/(dashboard)/repasses/importar/actions";
-import type { PreviewResultado, PreviewLinha, CommitLinhaInput, CommitResultado } from "@/lib/import/repasse-import";
+import type {
+  PreviewResultado,
+  PreviewLinha,
+  PreviewLancamento,
+  CommitLinhaInput,
+  CommitLancamentoInput,
+  CommitResultado,
+} from "@/lib/import/repasse-import";
 
 function chaveLinha(l: PreviewLinha) {
   return `${l.arquivo}::${l.propostaId}::${l.parcela}`;
+}
+
+function chaveLancamento(l: PreviewLancamento) {
+  return `${l.arquivo}::${l.creditoDebitoId}`;
 }
 
 function NovoBadge({ existe, label }: { existe: boolean; label: string }) {
@@ -33,6 +44,7 @@ export function ImportarRepassesForm() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<PreviewResultado | null>(null);
   const [incluidas, setIncluidas] = useState<Record<string, boolean>>({});
+  const [lancamentosIncluidos, setLancamentosIncluidos] = useState<Record<string, boolean>>({});
   const [tiposDoc, setTiposDoc] = useState<Record<string, "cnpj" | "cpf">>({});
   const [resultado, setResultado] = useState<CommitResultado | null>(null);
   const [analisando, startAnalise] = useTransition();
@@ -64,12 +76,22 @@ export function ImportarRepassesForm() {
       }
       setIncluidas(inc);
       setTiposDoc(doc);
+      const incLanc: Record<string, boolean> = {};
+      for (const l of resultado.lancamentos) {
+        incLanc[chaveLancamento(l)] = !l.jaImportado;
+      }
+      setLancamentosIncluidos(incLanc);
     });
   }
 
   const totalSelecionadas = useMemo(
     () => Object.values(incluidas).filter(Boolean).length,
     [incluidas]
+  );
+
+  const totalLancamentosSelecionados = useMemo(
+    () => Object.values(lancamentosIncluidos).filter(Boolean).length,
+    [lancamentosIncluidos]
   );
 
   function handleConfirmar() {
@@ -92,13 +114,25 @@ export function ImportarRepassesForm() {
         tipoDocEscolhido: tiposDoc[chaveLinha(l)] ?? l.tipoDocSugerido,
       }));
 
-    if (linhas.length === 0) {
+    const lancamentos: CommitLancamentoInput[] = preview.lancamentos
+      .filter((l) => lancamentosIncluidos[chaveLancamento(l)])
+      .map((l) => ({
+        arquivo: l.arquivo,
+        creditoDebitoId: l.creditoDebitoId,
+        data: l.data,
+        documento: l.documento,
+        descricao: l.descricao,
+        corretora: l.corretora,
+        valor: l.valor,
+      }));
+
+    if (linhas.length === 0 && lancamentos.length === 0) {
       toast.error("Nenhuma linha selecionada.");
       return;
     }
 
     startConfirmacao(async () => {
-      const resposta = await confirmarImportacao(preview.relatorios, linhas);
+      const resposta = await confirmarImportacao(preview.relatorios, linhas, lancamentos);
       if (!resposta.ok) {
         toast.error(resposta.message);
         return;
@@ -142,6 +176,8 @@ export function ImportarRepassesForm() {
             <div>Produções criadas: <span className="font-medium">{resultado.producoesCriadas}</span></div>
             <div>Repasses criados: <span className="font-medium">{resultado.repassesCriados}</span></div>
             <div>Repasses ignorados (já existiam): <span className="font-medium">{resultado.repassesIgnorados}</span></div>
+            <div>Lançamentos avulsos criados: <span className="font-medium">{resultado.lancamentosCriados}</span></div>
+            <div>Lançamentos ignorados (já existiam): <span className="font-medium">{resultado.lancamentosIgnorados}</span></div>
           </CardContent>
         </Card>
       )}
@@ -167,6 +203,12 @@ export function ImportarRepassesForm() {
                   )}
                   {r.linhasIgnoradas > 0 && (
                     <span className="text-destructive">{r.linhasIgnoradas} linha(s) não reconhecida(s)</span>
+                  )}
+                  {r.lancamentosAvulsosConferem === false && (
+                    <span className="inline-flex items-center gap-1 text-destructive">
+                      <AlertTriangle className="size-3.5" />
+                      soma dos lançamentos avulsos ({fmtMoney(r.somaLancamentosAvulsos)}) não bate com o Créd./Déb. do relatório ({fmtMoney(r.creditoDebitoTotal)}) — revise antes de confirmar
+                    </span>
                   )}
                 </div>
               ))}
@@ -257,9 +299,73 @@ export function ImportarRepassesForm() {
             </CardContent>
           </Card>
 
+          {preview.lancamentos.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">
+                  4. Revise os lançamentos avulsos ({totalLancamentosSelecionados} de {preview.lancamentos.length} selecionados)
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-8"></TableHead>
+                        <TableHead>Documento</TableHead>
+                        <TableHead>Descrição</TableHead>
+                        <TableHead>Data</TableHead>
+                        <TableHead>Período</TableHead>
+                        <TableHead>Valor</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {preview.lancamentos.map((l) => {
+                        const key = chaveLancamento(l);
+                        return (
+                          <TableRow key={key} className={l.jaImportado ? "opacity-50" : undefined}>
+                            <TableCell>
+                              <Checkbox
+                                checked={lancamentosIncluidos[key] ?? false}
+                                disabled={l.jaImportado}
+                                onCheckedChange={(checked) =>
+                                  setLancamentosIncluidos((prev) => ({ ...prev, [key]: checked }))
+                                }
+                              />
+                            </TableCell>
+                            <TableCell>{l.documento}</TableCell>
+                            <TableCell className="text-muted-foreground">{l.descricao}</TableCell>
+                            <TableCell className="text-muted-foreground">{l.data ?? "—"}</TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {l.periodo}
+                              {l.jaImportado && (
+                                <div>
+                                  <Badge variant="outline" className="text-[10px]">
+                                    já importado
+                                  </Badge>
+                                </div>
+                              )}
+                            </TableCell>
+                            <TableCell>{fmtMoney(l.valor)}</TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <div>
-            <Button type="button" onClick={handleConfirmar} disabled={confirmando || totalSelecionadas === 0}>
-              {confirmando ? "Importando..." : `Confirmar importação (${totalSelecionadas})`}
+            <Button
+              type="button"
+              onClick={handleConfirmar}
+              disabled={confirmando || (totalSelecionadas === 0 && totalLancamentosSelecionados === 0)}
+            >
+              {confirmando
+                ? "Importando..."
+                : `Confirmar importação (${totalSelecionadas + totalLancamentosSelecionados})`}
             </Button>
           </div>
         </>

@@ -6,6 +6,7 @@ import {
   commitImportacao as commitImportacaoLib,
   type PreviewResultado,
   type CommitLinhaInput,
+  type CommitLancamentoInput,
   type CommitRelatorioInput,
   type CommitResultado,
 } from "@/lib/import/repasse-import";
@@ -31,10 +32,11 @@ export async function previewImportacao(formData: FormData): Promise<AcaoResulta
 
 export async function confirmarImportacao(
   relatorios: CommitRelatorioInput[],
-  linhas: CommitLinhaInput[]
+  linhas: CommitLinhaInput[],
+  lancamentos: CommitLancamentoInput[] = []
 ): Promise<AcaoResultado<CommitResultado>> {
   try {
-    const data = await commitImportacaoLib(relatorios, linhas);
+    const data = await commitImportacaoLib(relatorios, linhas, lancamentos);
     revalidatePath("/repasses");
     revalidatePath("/producoes");
     revalidatePath("/clientes");

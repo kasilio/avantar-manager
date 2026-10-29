@@ -105,11 +105,27 @@ export interface PreviewRelatorio {
   comissaoBrutaTotal: number | null;
   somaLinhas: number;
   linhasIgnoradas: number;
+  creditoDebitoTotal: number | null;
+  somaLancamentosAvulsos: number;
+  lancamentosAvulsosConferem: boolean | null;
+}
+
+export interface PreviewLancamento {
+  arquivo: string;
+  creditoDebitoId: string;
+  data: string | null;
+  documento: string;
+  descricao: string;
+  corretora: string;
+  valor: number;
+  periodo: string;
+  jaImportado: boolean;
 }
 
 export interface PreviewResultado {
   relatorios: PreviewRelatorio[];
   linhas: PreviewLinha[];
+  lancamentos: PreviewLancamento[];
 }
 
 async function resolverLinha(
@@ -171,6 +187,7 @@ export async function previewImportacao(arquivos: { nome: string; data: Uint8Arr
 
   const relatorios: PreviewRelatorio[] = [];
   let linhas: PreviewLinha[] = [];
+  const lancamentos: PreviewLancamento[] = [];
 
   for (const arquivo of arquivos) {
     let relatorio: RepasseRelatorioParsed;
@@ -188,15 +205,53 @@ export async function previewImportacao(arquivos: { nome: string; data: Uint8Arr
       comissaoBrutaTotal: relatorio.comissaoBrutaTotal,
       somaLinhas: relatorio.somaLinhas,
       linhasIgnoradas: relatorio.linhasIgnoradas,
+      creditoDebitoTotal: relatorio.creditoDebitoTotal,
+      somaLancamentosAvulsos: relatorio.somaLancamentosAvulsos,
+      lancamentosAvulsosConferem: relatorio.lancamentosAvulsosConferem,
     });
     for (const linha of relatorio.linhas) {
       linhas.push(await resolverLinha(ctx, relatorio, linha));
+    }
+
+    // Dedupe de lançamentos avulsos é por (lote, credito_debito_id) — o lote
+    // só existe de fato após o commit, então aqui só consulta se já existe
+    // um lote pro mesmo período e, se existir, quais ids já foram importados.
+    let idsExistentes = new Set<string>();
+    const periodoInicioIso = brDateToIso(relatorio.periodoInicio);
+    const periodoFimIso = brDateToIso(relatorio.periodoFim);
+    if (periodoInicioIso && periodoFimIso) {
+      const { data: loteExistente } = await supabase
+        .from("repasses_lotes")
+        .select("id")
+        .eq("periodo_inicio", periodoInicioIso)
+        .eq("periodo_fim", periodoFimIso)
+        .maybeSingle();
+      if (loteExistente) {
+        const { data: lancamentosExistentes } = await supabase
+          .from("repasses_lote_lancamentos")
+          .select("credito_debito_id")
+          .eq("lote_id", loteExistente.id);
+        idsExistentes = new Set((lancamentosExistentes ?? []).map((l) => l.credito_debito_id));
+      }
+    }
+    for (const l of relatorio.lancamentosAvulsos) {
+      lancamentos.push({
+        arquivo: relatorio.arquivo,
+        creditoDebitoId: l.creditoDebitoId,
+        data: l.data,
+        documento: l.documento,
+        descricao: l.descricao,
+        corretora: l.corretora,
+        valor: l.valor,
+        periodo: periodoAaaaMm(relatorio) ?? "",
+        jaImportado: idsExistentes.has(l.creditoDebitoId),
+      });
     }
   }
 
   linhas = await marcarJaImportados(supabase, ctx, linhas);
 
-  return { relatorios, linhas };
+  return { relatorios, linhas, lancamentos };
 }
 
 export interface CommitLinhaInput {
@@ -215,6 +270,16 @@ export interface CommitLinhaInput {
   tipoDocEscolhido: "cnpj" | "cpf";
 }
 
+export interface CommitLancamentoInput {
+  arquivo: string;
+  creditoDebitoId: string;
+  data: string | null;
+  documento: string;
+  descricao: string;
+  corretora: string;
+  valor: number;
+}
+
 export interface CommitRelatorioInput {
   arquivo: string;
   periodoInicio: string | null;
@@ -229,9 +294,15 @@ export interface CommitResultado {
   producoesCriadas: number;
   repassesCriados: number;
   repassesIgnorados: number;
+  lancamentosCriados: number;
+  lancamentosIgnorados: number;
 }
 
-export async function commitImportacao(relatorios: CommitRelatorioInput[], linhas: CommitLinhaInput[]): Promise<CommitResultado> {
+export async function commitImportacao(
+  relatorios: CommitRelatorioInput[],
+  linhas: CommitLinhaInput[],
+  lancamentos: CommitLancamentoInput[] = []
+): Promise<CommitResultado> {
   const usuario = await requireAdmin();
   const supabase = await createClient();
   const ctx = await carregarContexto(supabase);
@@ -243,6 +314,8 @@ export async function commitImportacao(relatorios: CommitRelatorioInput[], linha
     producoesCriadas: 0,
     repassesCriados: 0,
     repassesIgnorados: 0,
+    lancamentosCriados: 0,
+    lancamentosIgnorados: 0,
   };
 
   const relatoriosPorArquivo = new Map(relatorios.map((r) => [r.arquivo, r]));
@@ -436,6 +509,38 @@ export async function commitImportacao(relatorios: CommitRelatorioInput[], linha
     });
     if (error) throw new Error(`Erro criando repasse (proposta ${linha.propostaId}, parcela ${linha.parcela}): ${error.message}`);
     resultado.repassesCriados++;
+  }
+
+  const lancamentosExistentesPorLote = new Map<string, Set<string>>();
+  async function idsExistentesDoLote(loteId: string): Promise<Set<string>> {
+    const cache = lancamentosExistentesPorLote.get(loteId);
+    if (cache) return cache;
+    const { data } = await supabase.from("repasses_lote_lancamentos").select("credito_debito_id").eq("lote_id", loteId);
+    const ids = new Set((data ?? []).map((l) => l.credito_debito_id));
+    lancamentosExistentesPorLote.set(loteId, ids);
+    return ids;
+  }
+
+  for (const lancamento of lancamentos) {
+    const loteId = await getOrCreateLote(lancamento.arquivo);
+    const idsExistentes = await idsExistentesDoLote(loteId);
+    if (idsExistentes.has(lancamento.creditoDebitoId)) {
+      resultado.lancamentosIgnorados++;
+      continue;
+    }
+    idsExistentes.add(lancamento.creditoDebitoId);
+
+    const { error } = await supabase.from("repasses_lote_lancamentos").insert({
+      lote_id: loteId,
+      credito_debito_id: lancamento.creditoDebitoId,
+      data: lancamento.data ? brDateToIso(lancamento.data) : null,
+      documento: lancamento.documento,
+      descricao: lancamento.descricao,
+      corretora: lancamento.corretora || null,
+      valor: lancamento.valor,
+    });
+    if (error) throw new Error(`Erro criando lançamento avulso (id ${lancamento.creditoDebitoId}): ${error.message}`);
+    resultado.lancamentosCriados++;
   }
 
   return resultado;

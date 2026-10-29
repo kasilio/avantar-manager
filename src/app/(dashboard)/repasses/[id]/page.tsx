@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { createClient } from "@/lib/supabase/server";
 import { requireCurrentUsuario } from "@/lib/auth/get-current-usuario";
 import { fmtDate, fmtDateCurta, fmtMoney, fmtPct, today } from "@/lib/format";
-import type { NfseEmissao, RepasseLote } from "@/types/database";
+import type { NfseEmissao, RepasseLote, RepasseLoteLancamento } from "@/types/database";
 import { anexarNf, registrarPagamento } from "../actions";
 
 export default async function RepasseLoteDetalhePage({
@@ -26,7 +26,7 @@ export default async function RepasseLoteDetalhePage({
   const isAdmin = usuario.papel === "admin";
   const supabase = await createClient();
 
-  const [{ data: loteRaw }, { data: linhasRaw }, { data: emissoesRaw }] = await Promise.all([
+  const [{ data: loteRaw }, { data: linhasRaw }, { data: emissoesRaw }, { data: lancamentosRaw }] = await Promise.all([
     supabase.from("repasses_lotes").select("*").eq("id", id).single(),
     supabase
       .from("repasses")
@@ -38,9 +38,15 @@ export default async function RepasseLoteDetalhePage({
       .select("id, status, numero_nfse")
       .eq("repasse_lote_id", id)
       .order("created_at", { ascending: false }),
+    isAdmin
+      ? supabase.from("repasses_lote_lancamentos").select("*").eq("lote_id", id).order("data", { ascending: true })
+      : Promise.resolve({ data: null }),
   ]);
   const lote = loteRaw as RepasseLote | null;
   if (!lote) notFound();
+
+  const lancamentos = (lancamentosRaw ?? []) as RepasseLoteLancamento[];
+  const somaLancamentos = lancamentos.reduce((sum, l) => sum + Number(l.valor ?? 0), 0);
 
   const emissoes = (emissoesRaw ?? []) as Pick<NfseEmissao, "id" | "status" | "numero_nfse">[];
   const ultimaEmissao = emissoes[0] ?? null;
@@ -248,6 +254,39 @@ export default async function RepasseLoteDetalhePage({
           </TableBody>
         </Table>
       </div>
+
+      {isAdmin && lancamentos.length > 0 && (
+        <>
+          <h2 className="text-lg font-semibold">
+            Outros lançamentos <span className="text-sm font-normal text-muted-foreground">({fmtMoney(somaLancamentos)})</span>
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Créditos/débitos avulsos do relatório, sem apólice associada — não entram na comissão bruta nem na NF.
+          </p>
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Documento</TableHead>
+                  <TableHead className="hidden md:table-cell">Descrição</TableHead>
+                  <TableHead className="hidden md:table-cell">Data</TableHead>
+                  <TableHead>Valor</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {lancamentos.map((l) => (
+                  <TableRow key={l.id}>
+                    <TableCell className="font-medium">{l.documento}</TableCell>
+                    <TableCell className="hidden md:table-cell text-muted-foreground">{l.descricao}</TableCell>
+                    <TableCell className="hidden md:table-cell text-muted-foreground">{fmtDateCurta(l.data)}</TableCell>
+                    <TableCell>{fmtMoney(l.valor)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </>
+      )}
     </div>
   );
 }

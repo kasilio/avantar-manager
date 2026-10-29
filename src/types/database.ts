@@ -168,6 +168,18 @@ export type RepasseLote = {
   updated_at: string;
 };
 
+export type RepasseLoteLancamento = {
+  id: string;
+  lote_id: string;
+  credito_debito_id: string;
+  data: string | null;
+  documento: string;
+  descricao: string;
+  corretora: string | null;
+  valor: number;
+  created_at: string;
+};
+
 export type CrmColuna = {
   id: string;
   label: string;
@@ -357,6 +369,7 @@ export type Database = {
       followups: TableDef<Followup, Omit<Followup, "id" | "created_at">>;
       repasses: TableDef<Repasse, Omit<Repasse, "id" | "created_at" | "updated_at">>;
       repasses_lotes: TableDef<RepasseLote, Omit<RepasseLote, "id" | "created_at" | "updated_at" | "status"> & Partial<Pick<RepasseLote, "status">>>;
+      repasses_lote_lancamentos: TableDef<RepasseLoteLancamento, Omit<RepasseLoteLancamento, "id" | "created_at">>;
       crm_colunas: TableDef<CrmColuna, Omit<CrmColuna, "sistema" | "bloqueada" | "ordem"> & Partial<Pick<CrmColuna, "sistema" | "bloqueada" | "ordem">>>;
       prospeccoes: TableDef<Prospeccao, Omit<Prospeccao, "id" | "created_at" | "updated_at">>;
       prospeccoes_historico: TableDef<ProspeccaoHistorico, Omit<ProspeccaoHistorico, "id" | "created_at">>;

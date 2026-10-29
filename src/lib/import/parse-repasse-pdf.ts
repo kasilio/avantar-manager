@@ -23,16 +23,32 @@ export interface RepasseLinhaParsed {
   comissao: number;
 }
 
+/** Linha da caixa "Outros Lançamentos" — crédito/débito avulso do lote, sem
+ * apólice/produção associada (ex. desconto lançado na comissão do produtor
+ * por causa de uma apólice de outro ramo). */
+export interface RepasseLancamentoAvulsoParsed {
+  creditoDebitoId: string;
+  data: string | null;
+  documento: string;
+  descricao: string;
+  corretora: string;
+  valor: number;
+}
+
 export interface RepasseRelatorioParsed {
   arquivo: string;
   periodoInicio: string | null;
   periodoFim: string | null;
   produtor: string | null;
   comissaoBrutaTotal: number | null;
+  creditoDebitoTotal: number | null;
   linhas: RepasseLinhaParsed[];
   linhasIgnoradas: number;
   somaLinhas: number;
   totalConfere: boolean | null;
+  lancamentosAvulsos: RepasseLancamentoAvulsoParsed[];
+  somaLancamentosAvulsos: number;
+  lancamentosAvulsosConferem: boolean | null;
 }
 
 interface Item {
@@ -158,6 +174,128 @@ function parseRow(items: Item[]): RepasseLinhaParsed | null {
   };
 }
 
+type LancamentoColuna = "id" | "data" | "documento" | "descricao" | "corretora" | "valor";
+
+const LANCAMENTO_HEADER_LABELS: Record<string, LancamentoColuna> = {
+  "Credito /": "id",
+  "Debito Id": "id",
+  Data: "data",
+  Documento: "documento",
+  Descrição: "descricao",
+  Corretora: "corretora",
+  Valor: "valor",
+};
+
+/** A caixa "Outros Lançamentos" tem 3 colunas de texto livre em sequência
+ * (Documento/Descrição/Corretora) — a mesma técnica sequencial do parseRow
+ * principal não dá conta disso (não dá pra saber onde um campo termina e o
+ * próximo começa só pela ordem). Em vez disso, classifica cada item pela
+ * coluna (x) mais próxima dos rótulos do cabeçalho dessa caixa, o que
+ * também resolve de graça o caso de "Documento" quebrar em várias linhas
+ * (ex. "AGROFRUTAS\nCOMERCIO DE\nFRUTAS") — todas as linhas caem na mesma
+ * coluna, só mudam de y. */
+function parseLancamentosAvulsos(
+  allItems: Item[],
+  outrosLancamentosItem: Item | undefined,
+  legendaTopoItem: Item | undefined
+): RepasseLancamentoAvulsoParsed[] {
+  if (!outrosLancamentosItem) return [];
+
+  const boxItems = allItems.filter((it) => {
+    if (it.y >= outrosLancamentosItem.y) return false;
+    if (legendaTopoItem && it.y <= legendaTopoItem.y) return false;
+    return true;
+  });
+
+  const headerEntries = boxItems
+    .map((it) => ({ it, col: LANCAMENTO_HEADER_LABELS[it.str.trim()] }))
+    .filter((e): e is { it: Item; col: LancamentoColuna } => !!e.col);
+  if (headerEntries.length === 0) return [];
+
+  const colXSum = new Map<LancamentoColuna, { sum: number; n: number }>();
+  for (const { it, col } of headerEntries) {
+    const acc = colXSum.get(col) ?? { sum: 0, n: 0 };
+    acc.sum += it.x;
+    acc.n += 1;
+    colXSum.set(col, acc);
+  }
+  const colAnchors = [...colXSum.entries()].map(([col, { sum, n }]) => ({ col, x: sum / n }));
+  if (colAnchors.length < 6) return [];
+
+  const headerBottomY = Math.min(...headerEntries.map((e) => e.it.y));
+  const bodyItems = boxItems.filter((it) => it.y < headerBottomY);
+
+  const idAnchor = colAnchors.find((c) => c.col === "id")!;
+  const baselines = [
+    ...new Set(
+      bodyItems.filter((it) => /^\d+$/.test(it.str.trim()) && Math.abs(it.x - idAnchor.x) < 40).map((it) => it.y)
+    ),
+  ].sort((a, b) => b - a);
+  if (baselines.length === 0) return [];
+
+  function nearestBaseline(y: number): number {
+    let best = baselines[0];
+    let bestDist = Math.abs(y - best);
+    for (const b of baselines) {
+      const d = Math.abs(y - b);
+      if (d < bestDist) {
+        bestDist = d;
+        best = b;
+      }
+    }
+    return best;
+  }
+
+  function nearestColuna(x: number): LancamentoColuna {
+    let best = colAnchors[0];
+    let bestDist = Math.abs(x - best.x);
+    for (const c of colAnchors) {
+      const d = Math.abs(x - c.x);
+      if (d < bestDist) {
+        bestDist = d;
+        best = c;
+      }
+    }
+    return best.col;
+  }
+
+  const rows = new Map<number, Record<LancamentoColuna, Item[]>>();
+  for (const y of baselines) rows.set(y, { id: [], data: [], documento: [], descricao: [], corretora: [], valor: [] });
+
+  for (const it of bodyItems) {
+    rows.get(nearestBaseline(it.y))![nearestColuna(it.x)].push(it);
+  }
+
+  function joinColuna(col: Item[]): string {
+    return col
+      .sort((a, b) => b.y - a.y || a.x - b.x)
+      .map((it) => it.str.trim())
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  const resultado: RepasseLancamentoAvulsoParsed[] = [];
+  for (const y of baselines) {
+    const row = rows.get(y)!;
+    const creditoDebitoId = joinColuna(row.id);
+    if (!/^\d+$/.test(creditoDebitoId)) continue;
+    const dataRaw = joinColuna(row.data);
+    const valorRaw = joinColuna(row.valor);
+    const valor = parseMoney(valorRaw);
+    if (valor === null) continue;
+
+    resultado.push({
+      creditoDebitoId,
+      data: /^\d{2}\/\d{2}\/\d{4}$/.test(dataRaw) ? dataRaw : null,
+      documento: joinColuna(row.documento),
+      descricao: joinColuna(row.descricao),
+      corretora: joinColuna(row.corretora),
+      valor,
+    });
+  }
+  return resultado;
+}
+
 function periodoParaMes(periodoInicio: string | null): string | null {
   if (!periodoInicio) return null;
   const m = periodoInicio.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
@@ -189,6 +327,7 @@ export async function parseRepassePdf(data: Uint8Array, arquivo: string): Promis
   const produtor = produtorItem?.str.trim() ?? null;
 
   let comissaoBrutaTotal: number | null = null;
+  let creditoDebitoTotal: number | null = null;
   if (produtorItem) {
     const rowMoney = allItems
       .filter((it) => Math.abs(it.y - produtorItem.y) < 3 && /^R\$/.test(it.str.trim()))
@@ -198,8 +337,13 @@ export async function parseRepassePdf(data: Uint8Array, arquivo: string): Promis
     // (4 valores em R$). Quando o relatório inclui a coluna extra "Total
     // Prêmio Parcela" (visto no relatório de set/2026), ela entra na frente
     // e vira 5 valores, com Comissão Bruta no índice 1.
-    if (rowMoney.length === 4) comissaoBrutaTotal = rowMoney[0];
-    else if (rowMoney.length === 5) comissaoBrutaTotal = rowMoney[1];
+    if (rowMoney.length === 4) {
+      comissaoBrutaTotal = rowMoney[0];
+      creditoDebitoTotal = rowMoney[2];
+    } else if (rowMoney.length === 5) {
+      comissaoBrutaTotal = rowMoney[1];
+      creditoDebitoTotal = rowMoney[3];
+    }
   }
 
   // O cabeçalho da tabela é de duas linhas ("Parcela" com "Id"/"Nº" como
@@ -258,16 +402,25 @@ export async function parseRepassePdf(data: Uint8Array, arquivo: string): Promis
   const totalConfere =
     comissaoBrutaTotal === null ? null : Math.abs(somaLinhas - comissaoBrutaTotal) < 0.02;
 
+  const lancamentosAvulsos = parseLancamentosAvulsos(allItems, outrosLancamentosItem, legendaTopoItem);
+  const somaLancamentosAvulsos = Math.round(lancamentosAvulsos.reduce((sum, l) => sum + l.valor, 0) * 100) / 100;
+  const lancamentosAvulsosConferem =
+    creditoDebitoTotal === null ? null : Math.abs(somaLancamentosAvulsos - creditoDebitoTotal) < 0.02;
+
   return {
     arquivo,
     periodoInicio,
     periodoFim,
     produtor,
     comissaoBrutaTotal,
+    creditoDebitoTotal,
     linhas,
     linhasIgnoradas,
     somaLinhas,
     totalConfere,
+    lancamentosAvulsos,
+    somaLancamentosAvulsos,
+    lancamentosAvulsosConferem,
   };
 }
 
