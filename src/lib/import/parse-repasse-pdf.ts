@@ -122,14 +122,21 @@ function parseRow(items: Item[]): RepasseLinhaParsed | null {
     cursor++;
   }
 
-  const companhia = vals[cursor++] ?? "";
-  cursor++; // "Repasse" (forma, ex. "NR | CC") — não usado no schema atual
-  const premioRaw = vals[cursor++] ?? "";
-  const apolicePctRaw = vals[cursor++] ?? "";
-  const repassePctRaw = vals[cursor++] ?? "";
-  const comissaoRaw = vals[cursor++] ?? "";
+  // Companhia é texto livre e pode vir em mais de um item quando o nome tem
+  // mais de uma palavra (ex. "ALIRO SEGUROS") — palavras lado a lado na mesma
+  // linha não são mescladas pela heurística de merge vertical acima. Por
+  // isso os 5 campos fixos depois dela (Repasse/Prêmio/%Apólice/%Repasse/
+  // Comissão) são lidos de trás pra frente, e tudo que sobra vira companhia.
+  const tail = vals.slice(cursor);
+  if (tail.length < 6) return null;
+  const comissaoRaw = tail[tail.length - 1];
+  const repassePctRaw = tail[tail.length - 2];
+  const apolicePctRaw = tail[tail.length - 3];
+  const premioRaw = tail[tail.length - 4];
+  // tail[tail.length - 5] = "Repasse" (forma, ex. "NR | CC") — não usado no schema atual
+  const companhia = tail.slice(0, tail.length - 5).join(" ");
 
-  if (!/%$/.test(apolicePctRaw) || !/%$/.test(repassePctRaw) || !/^R\$/.test(comissaoRaw)) {
+  if (!companhia || !/%$/.test(apolicePctRaw) || !/%$/.test(repassePctRaw) || !/^R\$/.test(comissaoRaw)) {
     return null;
   }
 
@@ -223,9 +230,18 @@ export async function parseRepassePdf(data: Uint8Array, arquivo: string): Promis
   // elas — ou seja, ele fica ABAIXO do topo real da caixa. O corte de base
   // usa o y de "Formas Repasse:" (o texto mais alto da caixa).
   const legendaTopoItem = allItems.find((it) => it.str.trim() === "Formas Repasse:") ?? allItems.find((it) => it.str.trim() === "Legenda");
+
+  // A caixa "Outros Lançamentos" (créditos/débitos avulsos, ex. descontos por
+  // apólice de outro ramo) fica entre a tabela de Repasses e a Legenda — ou
+  // seja, dentro da mesma faixa vertical que o corte acima deixaria passar.
+  // Sem excluir essa caixa, o texto dela (datas, descrição, etc.) acaba
+  // grudando na linha de Repasses mais próxima e quebrando o parsing dela.
+  const outrosLancamentosItem = allItems.find((it) => it.str.trim() === "Outros Lançamentos");
+
   const tableItems = allItems.filter((it) => {
     if (headerBottomY !== null && it.y >= headerBottomY) return false;
     if (legendaTopoItem && it.y <= legendaTopoItem.y) return false;
+    if (outrosLancamentosItem && it.y <= outrosLancamentosItem.y) return false;
     return true;
   });
 
